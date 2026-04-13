@@ -80,7 +80,10 @@
       "TARGET 1: Sell 50% at 100% gain on premium",
       "TARGET 2: Trail stop on remaining 50%, exit by 1:00 PM ET at latest",
       "HARD EXIT: Close ALL 0DTE positions by 3:30 PM ET — never hold into close",
-      "INVALIDATION: Exit if underlying closes through FVG on 5min candle"
+      "INVALIDATION #1: Exit if underlying closes through FVG on 5min candle",
+      "INVALIDATION #2 (VWAP CROSS): Exit IMMEDIATELY if price crosses VWAP against trade direction — no wait, no hope. Shorts die above VWAP, longs die below VWAP",
+      "INVALIDATION #3 (EMA FLIP): Exit if MA #1 crosses MA #2 against trade direction on 15min — bias has changed",
+      "TIME STOP: If the trade has not worked by 11:30 AM ET, exit regardless of P&L. News-driven setups either work fast or not at all"
     ],
     "best_trading_windows": [
       "9:35–10:30 AM ET — highest momentum, best FVG setups of the day",
@@ -91,6 +94,35 @@
     ]
   },
 
+  "gap_day_protocol": {
+    "definition": "Any day where SPY or QQQ gaps up OR down by more than 0.5% at the open compared to the prior close — usually triggered by overnight news (geopolitical, Fed, earnings, etc.)",
+    "why_this_matters": "Gap days are whipsaw traps. Gap-down opens often get FILLED during the session as initial fear fades. Gap-up opens often get FADED as greed cools. Fading a gap in the first 30 minutes is one of the most expensive mistakes — the market punishes early conviction.",
+    "rules": [
+      "DO NOT trade the first 30 minutes of a gap day — sit out from 9:30 to 10:00 AM ET and WATCH",
+      "NEVER fade a gap in the first hour — gaps fill more often than they extend",
+      "Wait for the 9:45–10:15 AM range to establish before committing to a direction",
+      "Confirm trend with TWO consecutive 15min candles closing in the same direction",
+      "Require BOTH VWAP and EMA to align with trade direction — no exceptions on gap days",
+      "If the gap fills before 11:00 AM, the directional thesis is DEAD — do not re-enter same direction",
+      "Size DOWN by 50% on gap days — use half your normal position size to account for higher volatility",
+      "No more than 1 trade per gap day — if the first trade loses, stop for the day",
+      "Cancel ALL pending setup alerts from pre-market planning — the gap invalidates the prior day's analysis",
+      "If news is breaking intraday (Trump statement, Fed headline, etc.) — CLOSE all positions immediately"
+    ],
+    "gap_down_specific": [
+      "Gap-down PUT setups are LOW probability — the market often snaps back",
+      "If you must short a gap down, wait for FAILED rally back to VWAP and rejection — NOT the initial open",
+      "Better play: wait for gap fill and then short from the prior day's close as resistance",
+      "If price reclaims VWAP within the first hour, flip to CALL bias — the gap is filling"
+    ],
+    "gap_up_specific": [
+      "Gap-up CALL setups work better when supported by strong premarket volume",
+      "If price fails to hold the gap and breaks back below the open, flip to PUT bias",
+      "Avoid buying the initial spike — wait for pullback to VWAP or first 15min low"
+    ],
+    "post_mortem_rule": "After any gap day, whether you traded or not, document what happened: did the gap fill, extend, or chop? This builds pattern recognition for future gap days."
+  },
+
   "risk_rules": [
     "0DTE ONLY — no other expiries under any circumstances",
     "Premium must be between $0.50 and $0.90 per share — hard rule, no exceptions",
@@ -98,11 +130,15 @@
     "If daily loss reaches $60 (2 stopped-out trades), stop trading for the day",
     "Minimum R:R of 1:2 on premium (risk $30, target $60+)",
     "No trading 9:30–9:35 AM ET — let the open settle",
+    "On gap days (>0.5% open gap), no trading until 10:00 AM ET minimum",
     "No new entries after 3:00 PM ET on 0DTE",
     "Close ALL positions by 3:30 PM ET — no exceptions",
     "Only trade SPY and QQQ options",
     "Never average down on a losing 0DTE position",
-    "Never hold through a major news event or Fed announcement"
+    "Never hold through a major news event or Fed announcement",
+    "VWAP CROSS = INSTANT EXIT — if price crosses VWAP against your position, close immediately",
+    "TIME STOP at 11:30 AM ET — if setup hasn't worked, close the position regardless of stop loss",
+    "On gap days, size down 50% — volatility is elevated and whipsaws are common"
   ],
 
   "notes": "Strict 0DTE options trader — SPY and QQQ only. Premium range $0.50–$0.90 per share ($50–$90 per contract). Stop at 50% loss = max $30–$45 risk per trade. FVG setups on 15min only. Best windows: 9:35–10:30 AM and 1:30–2:30 PM ET. Avoid lunch chop and never hold 0DTE past 3:30 PM. Theta decay kills 0DTE value fast — only trade high-conviction FVG setups with full VWAP and EMA confirmation."
