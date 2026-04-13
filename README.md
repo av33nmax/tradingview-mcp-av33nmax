@@ -1,341 +1,84 @@
-# TradingView MCP Jackson
+# tradingview-mcp-av33nmax
 
-If you found this from the YouTube video — welcome. This is the improved fork. Everything you need is below.
+> AI-powered 0DTE options trading assistant for SPY & QQQ — built on [tradingview-mcp-jackson](https://github.com/LewisWJackson/tradingview-mcp-jackson) by LewisWJackson.
 
-Built on top of the original [tradingview-mcp](https://github.com/tradesdontlie/tradingview-mcp) by [@tradesdontlie](https://github.com/tradesdontlie). Full credit to them for the foundation. This fork adds a morning brief workflow, a rules config, and fixes the launch bug on TradingView Desktop v2.14+.
+## What this does
 
-> [!WARNING]
-> **Not affiliated with TradingView Inc. or Anthropic.** This tool connects to your locally running TradingView Desktop app via Chrome DevTools Protocol. Review the [Disclaimer](#disclaimer) before use.
+Connects Claude AI to your TradingView Desktop via MCP (Model Context Protocol). Claude reads your live SPY and QQQ charts, identifies Fair Value Gap (FVG) setups, and gives you 0DTE options trade alerts with full risk sizing — all hands-free via voice using Wispr Flow.
 
-> [!IMPORTANT]
-> **Requires a valid TradingView subscription.** This tool does not bypass any TradingView paywall. It reads from and controls the TradingView Desktop app already running on your machine.
+## Strategy
 
-> [!NOTE]
-> **All data processing happens locally.** Nothing is sent anywhere. No TradingView data leaves your machine.
+- **Instruments:** SPY and QQQ options only
+- **Expiry:** 0DTE (same day) strictly
+- **Premium range:** $0.50–$0.90 per share ($50–$90 per contract)
+- **Max loss per trade:** $30 (50% stop on premium)
+- **Indicators:** VWAP + EMA
+- **Setup type:** ICT Fair Value Gaps (FVG) with Break of Structure confirmation
+- **Best windows:** 9:35–10:30 AM ET and 1:30–2:30 PM ET
 
----
+## Requirements
 
-## What's New in This Fork
+- Mac (Apple Silicon or Intel)
+- [TradingView Desktop](https://www.tradingview.com/desktop/) with active subscription
+- [Interactive Brokers TWS](https://www.interactivebrokers.com/en/trading/tws.php) (connected to TradingView)
+- [Claude Code](https://claude.ai/code) (Anthropic)
+- [Wispr Flow](https://whisperflow.app) (optional — voice control)
+- Node.js 18+
 
-| Feature | What it does |
-|---------|-------------|
-| `morning_brief` | One command that scans your watchlist, reads all your indicators, and returns structured data for Claude to generate your session bias |
-| `session_save` / `session_get` | Saves your daily brief to `~/.tradingview-mcp/sessions/` so you can compare today vs yesterday |
-| `rules.json` | Write your trading rules once — bias criteria, risk rules, watchlist. The morning brief applies them automatically every day |
-| Launch bug fix | Fixed `tv_launch` compatibility with TradingView Desktop v2.14+ |
-| `tv brief` CLI | Run your morning brief from the terminal in one word |
+## Installation
 
----
-
-## One-Shot Setup
-
-Paste this into Claude Code and it will handle everything:
-
-```
-Set up TradingView MCP Jackson for me. 
-Clone https://github.com/LewisWJackson/tradingview-mcp-jackson.git to ~/tradingview-mcp-jackson, run npm install, then add it to my MCP config at ~/.claude/.mcp.json (merge with any existing servers, don't overwrite them). 
-The config block is: { "mcpServers": { "tradingview": { "command": "node", "args": ["/Users/YOUR_USERNAME/tradingview-mcp-jackson/src/server.js"] } } } — replace YOUR_USERNAME with my actual username.
-Then copy rules.example.json to rules.json and open it so I can fill in my trading rules.
-Finally restart and verify with tv_health_check.
-```
-
-Or follow the manual steps below.
-
----
-
-## Prerequisites
-
-- **TradingView Desktop app** (paid subscription required for real-time data)
-- **Node.js 18+**
-- **Claude Code** (for MCP tools) or any terminal (for CLI)
-- **macOS, Windows, or Linux**
-
----
-
-## Quick Start
-
-### 1. Clone and install
-
+### One-command setup:
 ```bash
-git clone https://github.com/LewisWJackson/tradingview-mcp-jackson.git ~/tradingview-mcp-jackson
-cd ~/tradingview-mcp-jackson
-npm install
+curl -fsSL https://raw.githubusercontent.com/av33nmax/tradingview-mcp-av33nmax/main/setup.sh | bash
 ```
 
-### 2. Set up your rules
+### Manual setup:
 
+1. Clone this repo:
 ```bash
-cp rules.example.json rules.json
+git clone https://github.com/av33nmax/tradingview-mcp-av33nmax.git ~/tradingview-mcp-av33nmax
+cd ~/tradingview-mcp-av33nmax && npm install
 ```
 
-Open `rules.json` and fill in:
-- Your **watchlist** (symbols to scan each morning)
-- Your **bias criteria** (what makes something bullish/bearish/neutral for you)
-- Your **risk rules** (the rules you want Claude to check before every session)
-
-### 3. Launch TradingView with CDP
-
-TradingView must be running with the debug port enabled.
-
-**Mac:**
+2. Add to Claude Code:
 ```bash
-./scripts/launch_tv_debug_mac.sh
+claude mcp add tradingview node ~/tradingview-mcp-av33nmax/src/server.js
 ```
 
-**Windows:**
+3. Open TradingView Desktop, then launch Claude Code:
 ```bash
-scripts\launch_tv_debug.bat
+claude
 ```
 
-**Linux:**
-```bash
-./scripts/launch_tv_debug_linux.sh
-```
+## Daily Routine
 
-Or use the MCP tool after setup: `"Use tv_launch to start TradingView in debug mode"`
+1. Open **TradingView Desktop**
+2. Run `claude` in terminal
+3. Enable **Wispr Flow** and say: *"Scan SPY and QQQ for FVG setups"*
+4. Claude reads your charts and returns trade alerts
+5. Execute confirmed setups via TradingView + Interactive Brokers
 
-### 4. Add to Claude Code
+## Voice Commands (Wispr Flow)
 
-Add to `~/.claude/.mcp.json` (merge with any existing servers):
+Speak these into Claude Code:
+- *"Give me my morning bias for SPY and QQQ"*
+- *"Scan for FVG setups"*
+- *"Is there a bullish FVG on SPY 15min?"*
+- *"What's the current bias?"*
 
-```json
-{
-  "mcpServers": {
-    "tradingview": {
-      "command": "node",
-      "args": ["/Users/YOUR_USERNAME/tradingview-mcp-jackson/src/server.js"]
-    }
-  }
-}
-```
+## Risk Rules
 
-Replace `YOUR_USERNAME` with your actual username. On Mac: `echo $USER` to check.
-
-### 5. Verify
-
-Restart Claude Code, then ask: *"Use tv_health_check to verify TradingView is connected"*
-
-### 6. Run your first morning brief
-
-Ask Claude: *"Run morning_brief and give me my session bias"*
-
-Or from the terminal:
-```bash
-npm link  # install tv CLI globally (one time)
-tv brief
-```
-
----
-
-## Morning Brief Workflow
-
-This is the feature that turns this from a toolkit into a daily habit.
-
-**Before every session:**
-
-1. TradingView is open (launched with debug port)
-2. Run: `tv brief` in your terminal (or ask Claude: *"run morning_brief"*)
-3. Claude scans every symbol in your watchlist, reads your indicator values, applies your `rules.json` criteria, and prints:
-
-```
-BTCUSD  | BIAS: Bearish  | KEY LEVEL: 94,200  | WATCH: RSI crossing 50 on 4H
-ETHUSD  | BIAS: Neutral  | KEY LEVEL: 3,180   | WATCH: Ribbon direction on daily
-SOLUSD  | BIAS: Bullish  | KEY LEVEL: 178.50  | WATCH: Hold above 20 EMA
-
-Overall: Cautious session. BTC leading bearish, SOL the exception — watch for divergence.
-```
-
-4. Save it: *"save this brief"* (uses `session_save`)
-5. Next morning, compare: *"get yesterday's session"* (uses `session_get`)
-
----
-
-## What This Tool Does
-
-- **Morning brief** — scan watchlist, read indicators, apply your rules, print session bias
-- **Pine Script development** — write, inject, compile, debug scripts with AI
-- **Chart navigation** — change symbols, timeframes, zoom to dates, add/remove indicators
-- **Visual analysis** — read indicator values, price levels, drawn levels from custom indicators
-- **Draw on charts** — trend lines, horizontal levels, rectangles, text
-- **Manage alerts** — create, list, delete price alerts
-- **Replay practice** — step through historical bars, practice entries and exits with P&L tracking
-- **Screenshots** — capture chart state
-- **Multi-pane layouts** — 2x2, 3x1 grids with different symbols per pane
-- **Stream data** — JSONL output from your live chart for monitoring scripts
-- **CLI access** — every tool is also a `tv` command, pipe-friendly JSON output
-
----
-
-## How Claude Knows Which Tool to Use
-
-Claude reads `CLAUDE.md` automatically when working in this project. It contains the full decision tree.
-
-| You say... | Claude uses... |
-|------------|---------------|
-| "Run my morning brief" | `morning_brief` → apply rules → `session_save` |
-| "What was my bias yesterday?" | `session_get` |
-| "What's on my chart?" | `chart_get_state` → `data_get_study_values` → `quote_get` |
-| "Give me a full analysis" | `quote_get` → `data_get_study_values` → `data_get_pine_lines` → `data_get_pine_labels` → `capture_screenshot` |
-| "Switch to BTCUSD daily" | `chart_set_symbol` → `chart_set_timeframe` |
-| "Write a Pine Script for..." | `pine_set_source` → `pine_smart_compile` → `pine_get_errors` |
-| "Start replay at March 1st" | `replay_start` → `replay_step` → `replay_trade` |
-| "Set up a 4-chart grid" | `pane_set_layout` → `pane_set_symbol` |
-| "Draw a level at 94200" | `draw_shape` (horizontal_line) |
-
----
-
-## Tool Reference (81 MCP tools)
-
-### Morning Brief (new in this fork)
-
-| Tool | What it does |
-|------|-------------|
-| `morning_brief` | Scan watchlist, read indicators, return structured data for session bias. Reads `rules.json` automatically. |
-| `session_save` | Save the generated brief to `~/.tradingview-mcp/sessions/YYYY-MM-DD.json` |
-| `session_get` | Retrieve today's brief (or yesterday's if today not saved yet) |
-
-### Chart Reading
-
-| Tool | When to use | Output size |
-|------|------------|-------------|
-| `chart_get_state` | First call — get symbol, timeframe, all indicator names + IDs | ~500B |
-| `data_get_study_values` | Read current RSI, MACD, BB, EMA values from all indicators | ~500B |
-| `quote_get` | Get latest price, OHLC, volume | ~200B |
-| `data_get_ohlcv` | Get price bars. **Use `summary: true`** for compact stats | 500B (summary) / 8KB (100 bars) |
-
-### Custom Indicator Data (Pine Drawings)
-
-Read `line.new()`, `label.new()`, `table.new()`, `box.new()` output from any visible Pine indicator.
-
-| Tool | When to use |
-|------|------------|
-| `data_get_pine_lines` | Horizontal price levels (support/resistance, session levels) |
-| `data_get_pine_labels` | Text annotations + prices ("PDH 24550", "Bias Long") |
-| `data_get_pine_tables` | Data tables (session stats, analytics dashboards) |
-| `data_get_pine_boxes` | Price zones as {high, low} pairs |
-
-**Always use `study_filter`** to target a specific indicator: `study_filter: "MyIndicator"`.
-
-### Chart Control
-
-| Tool | What it does |
-|------|-------------|
-| `chart_set_symbol` | Change ticker (BTCUSD, AAPL, ES1!, NYMEX:CL1!) |
-| `chart_set_timeframe` | Change resolution (1, 5, 15, 60, D, W, M) |
-| `chart_set_type` | Change style (Candles, HeikinAshi, Line, Area, Renko) |
-| `chart_manage_indicator` | Add/remove indicators. **Use full names**: "Relative Strength Index" not "RSI" |
-| `chart_scroll_to_date` | Jump to a date (ISO: "2025-01-15") |
-| `indicator_set_inputs` / `indicator_toggle_visibility` | Change indicator settings, show/hide |
-
-### Pine Script Development
-
-| Tool | Step |
-|------|------|
-| `pine_set_source` | 1. Inject code into editor |
-| `pine_smart_compile` | 2. Compile with auto-detection + error check |
-| `pine_get_errors` | 3. Read compilation errors if any |
-| `pine_get_console` | 4. Read log.info() output |
-| `pine_save` | 5. Save to TradingView cloud |
-| `pine_analyze` | Offline static analysis (no chart needed) |
-| `pine_check` | Server-side compile check (no chart needed) |
-
-### Replay Mode
-
-| Tool | Step |
-|------|------|
-| `replay_start` | Enter replay at a date |
-| `replay_step` | Advance one bar |
-| `replay_autoplay` | Auto-advance (set speed in ms) |
-| `replay_trade` | Buy/sell/close positions |
-| `replay_status` | Check position, P&L, date |
-| `replay_stop` | Return to realtime |
-
-### Multi-Pane, Alerts, Drawings, UI
-
-| Tool | What it does |
-|------|-------------|
-| `pane_set_layout` | Change grid: `s`, `2h`, `2v`, `2x2`, `4`, `6`, `8` |
-| `pane_set_symbol` | Set symbol on any pane |
-| `draw_shape` | Draw horizontal_line, trend_line, rectangle, text |
-| `alert_create` / `alert_list` / `alert_delete` | Manage price alerts |
-| `batch_run` | Run action across multiple symbols/timeframes |
-| `watchlist_get` / `watchlist_add` | Read/modify watchlist |
-| `capture_screenshot` | Screenshot (regions: full, chart, strategy_tester) |
-| `tv_launch` / `tv_health_check` | Launch TradingView and verify connection |
-
----
-
-## CLI Commands
-
-```bash
-tv brief                           # run morning brief
-tv session get                     # get today's saved brief
-tv session save --brief "..."      # save a brief
-
-tv status                          # check connection
-tv quote                           # current price
-tv symbol BTCUSD                   # change symbol
-tv ohlcv --summary                 # price summary
-tv screenshot -r chart             # capture chart
-tv pine compile                    # compile Pine Script
-tv pane layout 2x2                 # 4-chart grid
-tv stream quote | jq '.close'      # monitor price ticks
-```
-
-Full command list: `tv --help`
-
----
-
-## Troubleshooting
-
-| Problem | Solution |
-|---------|----------|
-| `cdp_connected: false` | TradingView isn't running with `--remote-debugging-port=9222`. Use the launch script. |
-| `ECONNREFUSED` | TradingView isn't running or port 9222 is blocked |
-| MCP server not showing in Claude Code | Check `~/.claude/.mcp.json` syntax, restart Claude Code |
-| `tv` command not found | Run `npm link` from the project directory |
-| `morning_brief` — "No rules.json found" | Run `cp rules.example.json rules.json` and fill it in |
-| `morning_brief` — watchlist empty | Add symbols to the `watchlist` array in `rules.json` |
-| Tools return stale data | TradingView still loading — wait a few seconds |
-| Pine Editor tools fail | Open Pine Editor panel first: `ui_open_panel pine-editor open` |
-
----
-
-## Architecture
-
-```
-Claude Code  ←→  MCP Server (stdio)  ←→  CDP (port 9222)  ←→  TradingView Desktop (Electron)
-```
-
-- **78 original tools** + **3 morning brief tools** = 81 MCP tools total
-- **Transport**: MCP over stdio + CLI (`tv` command)
-- **Connection**: Chrome DevTools Protocol on localhost:9222
-- **No external network calls** — everything runs locally
-- **Zero extra dependencies** beyond the original
-
----
+- 0DTE only — no exceptions
+- Premium $0.50–$0.90 — skip anything outside this range
+- Stop at 50% of premium paid
+- Max 2 losing trades per day then stop
+- No trading after 3:00 PM ET
+- Close all positions by 3:30 PM ET
 
 ## Credits
 
-This fork is built on [tradingview-mcp](https://github.com/tradesdontlie/tradingview-mcp) by [@tradesdontlie](https://github.com/tradesdontlie). The original tool is the foundation — go star their repo.
+Built on top of [tradingview-mcp-jackson](https://github.com/LewisWJackson/tradingview-mcp-jackson) by LewisWJackson.
+FVG strategy based on ICT (Inner Circle Trader) concepts.
 
 ---
-
-## Disclaimer
-
-This project is provided **for personal, educational, and research purposes only**.
-
-This tool uses the Chrome DevTools Protocol (CDP), a standard debugging interface built into all Chromium-based applications. It does not reverse engineer any proprietary TradingView protocol, connect to TradingView's servers, or bypass any access controls. The debug port must be explicitly enabled by the user via a standard Chromium command-line flag.
-
-By using this software you agree that:
-
-1. You are solely responsible for ensuring your use complies with [TradingView's Terms of Use](https://www.tradingview.com/policies/) and all applicable laws.
-2. This tool accesses undocumented internal TradingView APIs that may change at any time.
-3. This tool must not be used to redistribute, resell, or commercially exploit TradingView's market data.
-4. The authors are not responsible for any account bans, suspensions, or other consequences.
-
-**Use at your own risk.**
-
-## License
-
-MIT — see [LICENSE](LICENSE). Applies to source code only, not to TradingView's software, data, or trademarks.
+*For educational purposes only. Not financial advice. Always trade responsibly.*

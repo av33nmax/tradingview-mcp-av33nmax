@@ -1,65 +1,109 @@
 {
-  "watchlist": ["BTCUSDT"],
-  "default_timeframe": "1",
+  "watchlist": ["SPY", "QQQ"],
 
-  "strategy": {
-    "name": "10-Second Momentum Scalper",
-    "sources": [
-      "Price momentum — buy if last close > previous close (green candle)",
-      "RSI filter — only trade when RSI is not at an extreme (30–70 range)"
-    ],
-    "primary_timeframes": [
-      "1-minute (signal source)",
-      "10-second execution loop"
-    ]
+  "instrument_type": "options",
+  "expiry_rule": "0DTE ONLY — same day expiry, no exceptions",
+
+  "timeframes": {
+    "execution": ["1", "5"],
+    "context_and_bias": ["15", "240", "1D"],
+    "default": "5"
   },
 
-  "indicators": {
-    "rsi_14": "Momentum filter. Only trade when RSI is between 30–70 (avoid extremes).",
-    "price_momentum": "Compare last close vs previous close. Up = long signal. Down = short signal."
+  "indicators": ["VWAP", "EMA"],
+
+  "options_setup": {
+    "expiry": "0DTE — today's expiry ONLY",
+    "contract_selection": {
+      "premium_min": "$0.50 per share ($50 per contract)",
+      "premium_max": "$0.90 per share ($90 per contract)",
+      "sweet_spot": "$0.55–$0.70 per share — best R:R for $30 max loss rule",
+      "type": "Buy CALLS on bullish FVG setups, buy PUTS on bearish FVG setups",
+      "strike": "ATM or 1 strike OTM — stay close to the money on 0DTE",
+      "delta": "Target delta 0.40–0.55 for 0DTE plays"
+    },
+    "strict_filters": [
+      "SKIP any option priced below $0.50 — too far OTM, low delta, lottery ticket",
+      "SKIP any option priced above $0.90 — too expensive, risk exceeds comfort zone",
+      "ONLY enter if premium is between $0.50 and $0.90 per share"
+    ],
+    "risk_per_trade": {
+      "max_premium": "$0.90 per share = $90 per contract (hard ceiling)",
+      "target_premium": "$0.55–$0.70 per share = $55–$70 per contract",
+      "max_loss": "$30 — achieved by exiting at 50% of premium paid",
+      "stop_loss": "Exit immediately at 50% loss on premium (e.g. paid $0.60 → exit at $0.30)",
+      "take_profit_1": "Exit 50% of position at 100% gain (e.g. paid $0.60 → sell half at $1.20)",
+      "take_profit_2": "Let remaining 50% run to 150%+ gain or until 1:00 PM ET, whichever comes first"
+    }
   },
 
   "bias_criteria": {
     "bullish": [
-      "Last 1-min candle closed higher than the one before it",
-      "RSI is between 30 and 70"
+      "Price is above VWAP on the 15min and 5min charts",
+      "EMA is sloping upward on the 15min chart",
+      "Break of Structure (BOS) to the upside confirmed on 15min",
+      "Bullish FVG present on 15min — buy 0DTE CALLS when price taps the FVG",
+      "Option premium is between $0.50 and $0.90 — if not, skip"
     ],
     "bearish": [
-      "Last 1-min candle closed lower than the one before it",
-      "RSI is between 30 and 70"
+      "Price is below VWAP on the 15min and 5min charts",
+      "EMA is sloping downward on the 15min chart",
+      "Break of Structure (BOS) to the downside confirmed on 15min",
+      "Bearish FVG present on 15min — buy 0DTE PUTS when price taps the FVG",
+      "Option premium is between $0.50 and $0.90 — if not, skip"
     ],
     "neutral": [
-      "RSI is above 70 (overbought — skip)",
-      "RSI is below 30 (oversold — skip)",
-      "Candle close change is less than 0.05% (chop — skip)"
+      "Price chopping around VWAP — DO NOT buy 0DTE premium in chop",
+      "EMA flat or price crossing it repeatedly",
+      "No clear BOS or FVG on 15min — sit on hands",
+      "Theta decay on 0DTE is brutal in choppy conditions — patience is a position"
     ]
   },
 
-  "entry_rules": {
-    "long": [
-      "Last close > previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market buy immediately"
+  "fvg_strategy": {
+    "identification": [
+      "FVG is a 3-candle formation where price moves aggressively in one direction",
+      "Bullish FVG: gap between candle 1 HIGH and candle 3 LOW — buy CALLS on retest",
+      "Bearish FVG: gap between candle 1 LOW and candle 3 HIGH — buy PUTS on retest",
+      "CE (Consequent Encroachment) = midpoint of the FVG — ideal entry point",
+      "Only trade FVGs on 15min timeframe for 0DTE setups"
     ],
-    "short": [
-      "Last close < previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market sell immediately"
+    "entry_rules": [
+      "Wait for price to retrace INTO the FVG zone on underlying chart",
+      "Enter 0DTE option when price touches the CE (midpoint) of the FVG",
+      "Confirm direction with VWAP and EMA on 15min before entering",
+      "Check option chain — premium MUST be $0.50–$0.90, otherwise skip",
+      "Use 1min chart for precise entry trigger — look for rejection candle at CE"
+    ],
+    "exit_rules": [
+      "STOP: Exit immediately at 50% loss on premium — no averaging down",
+      "TARGET 1: Sell 50% at 100% gain on premium",
+      "TARGET 2: Trail stop on remaining 50%, exit by 1:00 PM ET at latest",
+      "HARD EXIT: Close ALL 0DTE positions by 3:30 PM ET — never hold into close",
+      "INVALIDATION: Exit if underlying closes through FVG on 5min candle"
+    ],
+    "best_trading_windows": [
+      "9:35–10:30 AM ET — highest momentum, best FVG setups of the day",
+      "10:30–11:30 AM ET — secondary window, only if clear bias remains",
+      "1:30–2:30 PM ET — afternoon trend continuation setups",
+      "AVOID: 11:30 AM–1:30 PM ET — lunch chop, theta burning fastest",
+      "AVOID: After 3:00 PM ET — 0DTE decay accelerates dangerously"
     ]
   },
-
-  "exit_rules": [
-    "Exit automatically after 10 seconds (next loop tick closes previous position)",
-    "No manual exit management — pure time-based scalp"
-  ],
 
   "risk_rules": [
-    "Fixed trade size: 1% of portfolio per trade",
-    "Maximum trade size: $3.00",
-    "Maximum 6 trades per 60-second run",
-    "No stop loss — exit is time-based at next tick",
-    "For demo purposes only — minimum BitGet order size may apply"
+    "0DTE ONLY — no other expiries under any circumstances",
+    "Premium must be between $0.50 and $0.90 per share — hard rule, no exceptions",
+    "Maximum loss per trade: $30 (50% stop on premium paid)",
+    "If daily loss reaches $60 (2 stopped-out trades), stop trading for the day",
+    "Minimum R:R of 1:2 on premium (risk $30, target $60+)",
+    "No trading 9:30–9:35 AM ET — let the open settle",
+    "No new entries after 3:00 PM ET on 0DTE",
+    "Close ALL positions by 3:30 PM ET — no exceptions",
+    "Only trade SPY and QQQ options",
+    "Never average down on a losing 0DTE position",
+    "Never hold through a major news event or Fed announcement"
   ],
 
-  "notes": "Demo strategy for YouTube video. Runs 6 trades over 60 seconds, one every 10 seconds. Signal is simple price momentum on 1-min candles with RSI sanity check."
+  "notes": "Strict 0DTE options trader — SPY and QQQ only. Premium range $0.50–$0.90 per share ($50–$90 per contract). Stop at 50% loss = max $30–$45 risk per trade. FVG setups on 15min only. Best windows: 9:35–10:30 AM and 1:30–2:30 PM ET. Avoid lunch chop and never hold 0DTE past 3:30 PM. Theta decay kills 0DTE value fast — only trade high-conviction FVG setups with full VWAP and EMA confirmation."
 }
