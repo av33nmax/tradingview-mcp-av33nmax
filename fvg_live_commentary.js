@@ -276,8 +276,36 @@ async function checkSymbol(symbol) {
       currentZone = fvgKey(fvg);
       if (s.activeZoneKey !== currentZone) {
         const typeEmoji = fvg.type === 'BULL' ? '🟢' : '🔴';
-        const action = fvg.type === 'BULL' ? 'Watch for bounce — CALL setup' : 'Watch for rejection — PUT setup';
-        await emit(`${typeEmoji} **${symbol} ENTERED ${fvg.type} FVG** — Price $${price.toFixed(2)} inside $${fvg.bottom.toFixed(2)}–$${fvg.top.toFixed(2)}. CE $${fvg.ce.toFixed(2)}. ${action}.`);
+
+        // Check if VWAP and EMA align with the FVG direction
+        const vwapAligned = vwap != null
+          ? (fvg.type === 'BULL' ? price > vwap : price < vwap)
+          : null;
+        const emaAligned = (ma1 != null && ma2 != null)
+          ? (fvg.type === 'BULL' ? ma1 > ma2 : ma1 < ma2)
+          : null;
+
+        const vwapNote = vwap != null
+          ? ` VWAP $${vwap.toFixed(2)} ${vwapAligned ? '✅' : '❌'}`
+          : '';
+        const emaNote = (ma1 != null && ma2 != null)
+          ? ` | EMA stack ${emaAligned ? '✅' : '❌'}`
+          : '';
+
+        let action;
+        if (vwapAligned && emaAligned) {
+          action = fvg.type === 'BULL'
+            ? '✅ Valid CALL setup — watch for bounce at CE'
+            : '✅ Valid PUT setup — watch for rejection at CE';
+        } else if (vwapAligned === false && fvg.type === 'BEAR') {
+          action = `⚠️ Price ABOVE VWAP — this is likely a **gap-fill / bull move THROUGH the FVG**, NOT a PUT setup. If you're short here, danger zone.`;
+        } else if (vwapAligned === false && fvg.type === 'BULL') {
+          action = `⚠️ Price BELOW VWAP — this is likely a **bear continuation DOWN through the FVG**, NOT a CALL setup. If you're long here, danger zone.`;
+        } else {
+          action = `⏸ Wait — VWAP/EMA not aligned with FVG direction. Do NOT enter an option trade yet.`;
+        }
+
+        await emit(`${typeEmoji} **${symbol} ENTERED ${fvg.type} FVG** — Price $${price.toFixed(2)} inside $${fvg.bottom.toFixed(2)}–$${fvg.top.toFixed(2)}. CE $${fvg.ce.toFixed(2)}.${vwapNote}${emaNote}\n${action}`);
       }
       break;
     }
