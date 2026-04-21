@@ -108,6 +108,50 @@ function macd(closes, fast = 12, slow = 26, signal = 9) {
   return { macd: macdLine, signal: signalLine, hist };
 }
 
+function openingRange(bars, minutes = 15) {
+  // Opening Range: high/low of first N minutes of RTH (9:30 ET = 13:30 UTC).
+  // For 15m bars, minutes=15 → 1 bar. minutes=30 → 2 bars.
+  if (bars.length === 0) return null;
+  const last = bars[bars.length - 1];
+  const lastDate = new Date(last.t * 1000);
+  const y = lastDate.getUTCFullYear(), m = lastDate.getUTCMonth(), d = lastDate.getUTCDate();
+  const anchor930 = Date.UTC(y, m, d, 13, 30, 0) / 1000;
+  let anchor = anchor930;
+  if (last.t < anchor930) anchor = anchor930 - 86400;
+  const orEnd = anchor + minutes * 60;
+  const orBars = bars.filter(b => b.t >= anchor && b.t < orEnd);
+  if (orBars.length === 0) return null;
+  const high = Math.max(...orBars.map(b => b.h));
+  const low = Math.min(...orBars.map(b => b.l));
+  const vol = orBars.reduce((a, b) => a + b.v, 0);
+  const price = last.c;
+  const mid = (high + low) / 2;
+  const range = high - low;
+  let state = 'inside';
+  if (price > high) state = 'above';
+  else if (price < low) state = 'below';
+  // Check if broken cleanly (closed above/below)
+  const postOR = bars.filter(b => b.t >= orEnd);
+  const brokeHigh = postOR.some(b => b.c > high);
+  const brokeLow = postOR.some(b => b.c < low);
+  return {
+    minutes,
+    anchor,
+    high: round(high),
+    low: round(low),
+    mid: round(mid),
+    range: round(range),
+    volume: vol,
+    state,
+    brokeHigh,
+    brokeLow,
+    breakoutTarget_up: round(high + range),   // 1x range extension
+    breakoutTarget_dn: round(low - range),
+    measured_2x_up: round(high + 2 * range),
+    measured_2x_dn: round(low - 2 * range),
+  };
+}
+
 function sessionVWAPAnchored(bars) {
   // Anchor VWAP at the start of the most recent RTH session (9:30 ET = 13:30 UTC).
   // Bar timestamps are in seconds UTC.
@@ -307,9 +351,26 @@ function analyzeBars(bars) {
   // (h) FVG
   const fvgs = findFVGs(bars).slice(-5);
 
+  // (i) ORB — only meaningful on 15m (1 bar) and relevant on 1H (approx first hour)
+  const orb15 = openingRange(bars, 15);
+  const orb30 = openingRange(bars, 30);
+
+  // ATR (14) for sizing stops
+  const trs = [];
+  for (let i = 1; i < bars.length; i++) {
+    trs.push(Math.max(
+      bars[i].h - bars[i].l,
+      Math.abs(bars[i].h - bars[i - 1].c),
+      Math.abs(bars[i].l - bars[i - 1].c),
+    ));
+  }
+  const atr14 = trs.slice(-14).reduce((a, b) => a + b, 0) / 14;
+
   return {
     price: round(price),
+    lastBarTime: lastBar.t,
     bars: bars.length,
+    atr14: round(atr14),
     ema: emaNow, emaStack, priceVsEMA,
     vwap: vwap ? round(vwap) : null,
     vwapSide, vwapDistPct: vwapDist,
@@ -319,6 +380,7 @@ function analyzeBars(bars) {
     fib,
     sdZones,
     fvgs,
+    orb15, orb30,
   };
 }
 
@@ -349,6 +411,52 @@ function scoreSymbol(tfs) {
   const results = {};
   const indicatorsToEnsure = ['Moving Average Exponential', 'Volume Weighted Average Price', 'Moving Average Convergence Divergence', 'Volume'];
 
+  // Capture the user's original symbol + resolution so we can restore the chart afterward.
+  let userOriginalSymbol = null, userOriginalRes = null;
+  try {
+    userOriginalSymbol = await evaluate(`${CHART_API}.symbol()`);
+    userOriginalRes = await evaluate(`${CHART_API}.resolution()`);
+    console.log(`(chart will be restored to ${userOriginalSymbol} @ ${userOriginalRes}m when script finishes)`);
+  } catch {}
+
+  const restore = async () => {
+    if (!userOriginalSymbol) return;
+    try {
+      await evaluateAsync(`
+        (function() {
+          var chart = ${CHART_API};
+          return new Promise(function(resolve) {
+            chart.setSymbol('${userOriginalSymbol}', {});
+            setTimeout(function() {
+              try { chart.setResolution('${userOriginalRes}', {}); } catch(e) {}
+              resolve();
+            }, 800);
+          });
+        })()
+      `);
+      console.log(`(chart restored to ${userOriginalSymbol} @ ${userOriginalRes}m)`);
+    } catch {}
+  };
+  process.on('SIGINT', async () => { await restore(); process.exit(130); });
+
+  // Session clock — use 24-hour format to avoid AM/PM parsing bugs
+  const fmtHM = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit' });
+  const parts = fmtHM.formatToParts(new Date());
+  const hr = +parts.find(p => p.type === 'hour').value % 24;
+  const mn = +parts.find(p => p.type === 'minute').value;
+  const nowET = new Date();
+  const minsFromOpen = (hr - 9) * 60 + (mn - 30);
+  const minsToClose = (16 - hr) * 60 - mn;
+  const sessionPhase =
+    minsFromOpen < 0 ? 'PRE-MARKET' :
+    minsFromOpen < 15 ? 'OPENING (ORB forming)' :
+    minsFromOpen < 60 ? 'POST-ORB (first hour)' :
+    minsFromOpen < 180 ? 'MORNING TREND' :
+    minsFromOpen < 330 ? 'LUNCH / MIDDAY CHOP' :
+    minsFromOpen < 360 ? 'POWER HOUR APPROACH' :
+    minsFromOpen < 390 ? 'POWER HOUR / CLOSE' : 'AFTER-HOURS';
+  console.log(`\nSession clock: ${nowET.toLocaleTimeString('en-US', { timeZone: 'America/New_York' })} ET · ${sessionPhase} · ${minsToClose}m to close`);
+
   for (const sym of SYMBOLS) {
     const label = LABELS[sym];
     console.log(`\n━━━ ${label} (${sym}) ━━━`);
@@ -372,7 +480,8 @@ function scoreSymbol(tfs) {
         if (a.error) {
           console.log(`  ${tf.label}: ERROR — ${a.error}`);
         } else {
-          console.log(`  ${tf.label}: px=${a.price} ema9/21/50=${a.ema.ema9}/${a.ema.ema21}/${a.ema.ema50} (${a.emaStack}) vwap=${a.vwap} (${a.vwapSide}) macd=${a.macd.trend}/${a.macd.histDirection} rVol=${a.relVol}x FVGs=${a.fvgs.length} SD=${a.sdZones.length}`);
+          const orbStr = a.orb15 ? `ORB=${a.orb15.low}/${a.orb15.high} (${a.orb15.state}${a.orb15.brokeHigh ? ',brokeHi' : ''}${a.orb15.brokeLow ? ',brokeLo' : ''})` : '';
+          console.log(`  ${tf.label}: px=${a.price} ATR=${a.atr14} ema9/21/50=${a.ema.ema9}/${a.ema.ema21}/${a.ema.ema50} (${a.emaStack}) vwap=${a.vwap} (${a.vwapSide}) macd=${a.macd.trend}/${a.macd.histDirection} rVol=${a.relVol}x FVGs=${a.fvgs.length} SD=${a.sdZones.length} ${orbStr}`);
         }
       }
       results[label].score = scoreSymbol(results[label].tfs);
@@ -400,23 +509,91 @@ function scoreSymbol(tfs) {
 
     if (aligned) {
       const etfData = results[etf];
-      const px = etfData.tfs['15m']?.price;
-      const ema21_1H = etfData.tfs['1H']?.ema?.ema21;
-      const ema50_4H = etfData.tfs['4H']?.ema?.ema50;
-      const vwap15 = etfData.tfs['15m']?.vwap;
-      const fvgs15 = etfData.tfs['15m']?.fvgs || [];
+      const tf15 = etfData.tfs['15m'] || {};
+      const tf1H = etfData.tfs['1H'] || {};
+      const tf4H = etfData.tfs['4H'] || {};
+      const px = tf15.price;
+      const atr15 = tf15.atr14;
+      const ema9_15 = tf15.ema?.ema9;
+      const ema21_15 = tf15.ema?.ema21;
+      const ema21_1H = tf1H.ema?.ema21;
+      const ema50_4H = tf4H.ema?.ema50;
+      const vwap15 = tf15.vwap;
+      const fvgs15 = tf15.fvgs || [];
       const nearestFVG = fvgs15.length ? fvgs15[fvgs15.length - 1] : null;
-      const fib1H = etfData.tfs['1H']?.fib;
+      const fib1H = tf1H.fib;
+      const orb = tf15.orb15;
+      const orb30 = tf15.orb30;
+      const dir = fs === 'BULL' ? 'CALLS' : 'PUTS';
+      const bullish = fs === 'BULL';
 
-      console.log(`  Direction: ${fs === 'BULL' ? 'CALLS' : 'PUTS'}`);
-      console.log(`  Price: ${px}`);
-      console.log(`  Key supports (bull case): VWAP=${vwap15}, 1H EMA21=${ema21_1H}, 4H EMA50=${ema50_4H}`);
+      // Trigger levels
+      const orbTriggerLong = orb ? orb.high : null;
+      const orbTriggerShort = orb ? orb.low : null;
+      const fvgBreakTrigger = nearestFVG ? (nearestFVG.type === 'bear' ? nearestFVG.high : nearestFVG.low) : null;
+
+      // Stops (use 1x ATR beyond invalidation)
+      const stopLong = ema21_1H ? round(ema21_1H - atr15) : null;
+      const stopShort = ema21_1H ? round(ema21_1H + atr15) : null;
+
+      // Targets
+      const tgt1_up = orb ? orb.breakoutTarget_up : null;
+      const tgt2_up = orb ? orb.measured_2x_up : null;
+      const tgt1_dn = orb ? orb.breakoutTarget_dn : null;
+      const tgt2_dn = orb ? orb.measured_2x_dn : null;
+
+      console.log(`\n  ── ${etf} ${dir} PLAN ──`);
+      console.log(`  Current: ${px}   ATR(15m)=${atr15}   VWAP=${vwap15}`);
+      if (orb) console.log(`  ORB-15: ${orb.low}-${orb.high} (range ${orb.range}) · state=${orb.state}${orb.brokeHigh ? ' · BROKE HIGH' : ''}${orb.brokeLow ? ' · BROKE LOW' : ''}`);
+      if (orb30) console.log(`  ORB-30: ${orb30.low}-${orb30.high} (range ${orb30.range})`);
+      console.log(`  Trend ladder: 15m EMA21=${ema21_15} · 1H EMA21=${ema21_1H} · 4H EMA50=${ema50_4H}`);
       if (nearestFVG) console.log(`  Nearest 15m FVG: ${nearestFVG.type} ${nearestFVG.low}-${nearestFVG.high}`);
-      if (fib1H) console.log(`  1H Fib (${fib1H.direction}): 38.2=${fib1H.fib_382} 50=${fib1H.fib_500} 61.8=${fib1H.fib_618}`);
+      if (fib1H) console.log(`  1H Fib (${fib1H.direction}): 38.2=${fib1H.fib_382} · 50=${fib1H.fib_500} · 61.8=${fib1H.fib_618}`);
+      console.log(``);
+      if (bullish) {
+        console.log(`  🟢 TRIGGER A — ORB breakout long`);
+        console.log(`     Entry: 15m close > ${orbTriggerLong} with rVol ≥ 1.2x`);
+        console.log(`     Stop:  ${stopLong} (below 1H EMA21 − 1 ATR)`);
+        console.log(`     T1:    ${tgt1_up} (OR high + 1x range)    T2: ${tgt2_up} (2x range)`);
+        console.log(``);
+        console.log(`  🟢 TRIGGER B — VWAP/EMA21 pullback long`);
+        console.log(`     Entry: price tags VWAP (${vwap15}) or 1H EMA21 (${ema21_1H}) and prints bullish reclaim candle on 5m`);
+        console.log(`     Stop:  1 ATR below entry (~${round((vwap15 || px) - atr15)})`);
+        console.log(`     T1:    back to prior swing (${Math.max(...(tf15.recentHighs || [px]))})   T2: ${tgt1_up}`);
+        if (fvgBreakTrigger && nearestFVG?.type === 'bear') {
+          console.log(``);
+          console.log(`  ⚠️ Overhead bear FVG at ${nearestFVG.low}-${nearestFVG.high} — expect rejection on first touch; size small until reclaimed.`);
+        }
+      } else {
+        console.log(`  🔴 TRIGGER A — ORB breakdown short`);
+        console.log(`     Entry: 15m close < ${orbTriggerShort} with rVol ≥ 1.2x`);
+        console.log(`     Stop:  ${stopShort}   T1: ${tgt1_dn}   T2: ${tgt2_dn}`);
+      }
+      console.log(``);
+      console.log(`  INVALIDATION: 15m close below 1H EMA21 (${ema21_1H}) with bearish MACD cross → exit or flip.`);
+
+      // Time-of-day guidance
+      const timingNote =
+        minsFromOpen < 15 ? `ORB still forming — do NOT enter before 9:45 ET.` :
+        minsFromOpen < 60 ? `First-hour window. Most reliable ORB breakouts fire between 9:45-10:30 ET.` :
+        minsFromOpen < 180 ? `Morning trend window. Breakouts still valid; pullbacks to VWAP preferred.` :
+        minsFromOpen < 330 ? `Lunch chop zone. Avoid fresh entries; hold existing winners only.` :
+        minsFromOpen < 360 ? `Power hour approach — watch for trend resumption or reversal.` :
+        minsFromOpen < 390 ? `Power hour active. Momentum accelerates. Close 0DTE by 15:30 ET per your rules.` :
+        `After-hours — no 0DTE entries.`;
+      console.log(`  TIMING: ${timingNote}`);
+      console.log(`  HARD CLOSE: 15:30 ET (per rules.json). Time stop if not in profit by 14:00 ET.`);
+
       final[etf].entry_notes = {
-        price: px,
-        direction: fs === 'BULL' ? 'CALLS' : 'PUTS',
-        confluences: { vwap15, ema21_1H, ema50_4H, nearestFVG, fib1H },
+        direction: dir,
+        triggers: {
+          orb_breakout: orbTriggerLong,
+          vwap_pullback: vwap15,
+          ema21_1H_pullback: ema21_1H,
+        },
+        stops: { long: stopLong, short: stopShort },
+        targets: bullish ? { T1: tgt1_up, T2: tgt2_up } : { T1: tgt1_dn, T2: tgt2_dn },
+        invalidation: ema21_1H,
       };
     }
   }
@@ -425,5 +602,6 @@ function scoreSymbol(tfs) {
   console.log(`\n\n─── FULL DATA (JSON) ───`);
   console.log(JSON.stringify({ results, final }, null, 2));
 
+  await restore();
   process.exit(0);
-})().catch(e => { console.error('FATAL:', e); process.exit(1); });
+})().catch(async e => { console.error('FATAL:', e); process.exit(1); });

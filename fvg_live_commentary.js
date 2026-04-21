@@ -116,6 +116,18 @@ function emit(msg) {
 
 // ─── TradingView data ─────────────────────────────────────────────────────────
 
+// Remember the user's original symbol so we can restore it after each poll cycle.
+let userOriginalSymbol = null;
+
+async function captureUserSymbol() {
+  try {
+    userOriginalSymbol = await evaluate(`window.TradingViewApi._activeChartWidgetWV.value().symbol()`);
+    console.log(`[INIT] User's active symbol: ${userOriginalSymbol} — will restore after each poll cycle.`);
+  } catch (e) {
+    console.error(`[INIT] Could not capture user symbol: ${e.message}`);
+  }
+}
+
 async function switchToSymbol(symbol) {
   await evaluate(`
     (function() {
@@ -124,6 +136,16 @@ async function switchToSymbol(symbol) {
     })()
   `);
   await new Promise(r => setTimeout(r, 1500));
+}
+
+async function restoreUserSymbol() {
+  if (!userOriginalSymbol) return;
+  await evaluate(`
+    (function() {
+      var chart = window.TradingViewApi._activeChartWidgetWV.value();
+      if (chart.symbol() !== '${userOriginalSymbol}') chart.setSymbol('${userOriginalSymbol}', {});
+    })()
+  `);
 }
 
 async function getBars(count = 30) {
@@ -357,13 +379,18 @@ async function tick() {
   if (mins < 9 * 60 + 15 || mins > 16 * 60) return;
 
   try {
+    if (!userOriginalSymbol) await captureUserSymbol();
     await checkTimeEvents();
     for (let i = 0; i < SYMBOLS.length; i++) {
       await checkSymbol(SYMBOLS[i]);
       if (i < SYMBOLS.length - 1) await new Promise(r => setTimeout(r, 1500));
     }
+    // Restore the chart to whatever the user was looking at before the poll cycle.
+    await restoreUserSymbol();
   } catch (err) {
     console.error(`[ERROR] tick failed: ${err.message}`);
+    // Still try to restore the chart even on failure.
+    try { await restoreUserSymbol(); } catch {}
   }
 }
 
