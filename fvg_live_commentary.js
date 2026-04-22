@@ -27,6 +27,12 @@ if (!WEBHOOK_URL) {
 }
 
 // ─── Per-symbol state ─────────────────────────────────────────────────────────
+// Alert policy (per user feedback — only high-confidence setups):
+//   - Trade alerts fire ONLY on FVG entry with FULL confluence (VWAP + EMA + session phase)
+//   - Max 1 CALL + 1 PUT setup alert per symbol per day
+//   - Re-entry allowed if prior setup was stopped out (tracked via firedZoneKeys)
+//   - Entry window: 10:00 AM – 11:30 AM ET only
+//   - Time-based pings limited to: Market Open, 11:30 Time Stop, 15:30 Hard Close
 
 const state = {};
 for (const sym of SYMBOLS) {
@@ -40,8 +46,16 @@ for (const sym of SYMBOLS) {
     prevClose: null,
     gapAlertFired: false,
     firedTimeEvents: new Set(),
+    // Setup throttle: how many CALL / PUT alerts fired today, and which specific FVG zones triggered them.
+    callAlertCount: 0,
+    putAlertCount: 0,
+    firedZoneKeys: new Set(),
   };
 }
+
+const MAX_ALERTS_PER_DIRECTION = 2; // allows 1 re-entry after a stop-out
+const ENTRY_WINDOW_START = 10 * 60;       // 10:00 AM ET
+const ENTRY_WINDOW_END = 11 * 60 + 30;    // 11:30 AM ET
 
 let sessionDate = null; // yyyy-mm-dd — resets state at day boundary
 
@@ -102,6 +116,18 @@ function emit(msg) {
 
 // ─── TradingView data ─────────────────────────────────────────────────────────
 
+// Remember the user's original symbol so we can restore it after each poll cycle.
+let userOriginalSymbol = null;
+
+async function captureUserSymbol() {
+  try {
+    userOriginalSymbol = await evaluate(`window.TradingViewApi._activeChartWidgetWV.value().symbol()`);
+    console.log(`[INIT] User's active symbol: ${userOriginalSymbol} — will restore after each poll cycle.`);
+  } catch (e) {
+    console.error(`[INIT] Could not capture user symbol: ${e.message}`);
+  }
+}
+
 async function switchToSymbol(symbol) {
   await evaluate(`
     (function() {
@@ -110,6 +136,16 @@ async function switchToSymbol(symbol) {
     })()
   `);
   await new Promise(r => setTimeout(r, 1500));
+}
+
+async function restoreUserSymbol() {
+  if (!userOriginalSymbol) return;
+  await evaluate(`
+    (function() {
+      var chart = window.TradingViewApi._activeChartWidgetWV.value();
+      if (chart.symbol() !== '${userOriginalSymbol}') chart.setSymbol('${userOriginalSymbol}', {});
+    })()
+  `);
 }
 
 async function getBars(count = 30) {
@@ -231,87 +267,57 @@ async function checkSymbol(symbol) {
     s.gapAlertFired = true;
   }
 
-  // ── VWAP cross ──
-  if (vwap && s.lastPrice !== null && s.lastVWAP !== null) {
-    const wasAbove = s.lastPrice > s.lastVWAP;
-    const nowAbove = price > vwap;
-    if (wasAbove !== nowAbove) {
-      const dir = nowAbove ? 'ABOVE' : 'BELOW';
-      const impact = nowAbove
-        ? 'Bull bias confirmed. PUT positions: EXIT NOW. CALL setups become valid.'
-        : 'Bear bias confirmed. CALL positions: EXIT NOW. PUT setups become valid.';
-      await emit(`🔔 **${symbol} VWAP CROSS** — Price $${price.toFixed(2)} crossed ${dir} VWAP ($${vwap.toFixed(2)}). ${impact}`);
-    }
-  }
-
-  // ── EMA flip ──
-  if (ma1 && ma2 && s.lastMA1 !== null && s.lastMA2 !== null) {
-    const wasBullish = s.lastMA1 > s.lastMA2;
-    const nowBullish = ma1 > ma2;
-    if (wasBullish !== nowBullish) {
-      const dir = nowBullish ? 'BULLISH' : 'BEARISH';
-      await emit(`⚡ **${symbol} EMA FLIP — ${dir}** — MA#1 $${ma1.toFixed(2)} ${nowBullish ? '>' : '<'} MA#2 $${ma2.toFixed(2)}. Bias has changed. Re-evaluate open positions.`);
-    }
-  }
-
-  // ── New FVG detection ──
+  // ── Track FVGs silently (needed for zone entry check; no alert on formation) ──
   const currentFVGs = findFVGs(bars);
   for (const fvg of currentFVGs) {
-    const key = fvgKey(fvg);
-    if (!s.knownFVGKeys.has(key)) {
-      s.knownFVGKeys.add(key);
-      // Only alert on the most recent FVG (not historical ones on first run)
-      const ageMin = (Date.now() / 1000 - fvg.time) / 60;
-      if (ageMin < 20 && s.lastPrice !== null) { // fresh FVG within 20 min
-        const typeEmoji = fvg.type === 'BULL' ? '🟢' : '🔴';
-        await emit(`${typeEmoji} **${symbol} NEW ${fvg.type} FVG** formed at $${fvg.bottom.toFixed(2)}–$${fvg.top.toFixed(2)} | CE $${fvg.ce.toFixed(2)} | Watch for retest.`);
-      }
-    }
+    s.knownFVGKeys.add(fvgKey(fvg));
   }
 
-  // ── FVG zone entry/exit ──
+  // ── High-confidence setup alert (strict gate) ──
+  // Fires ONLY when ALL conditions met:
+  //   1. Price inside an FVG zone
+  //   2. VWAP aligned with FVG direction
+  //   3. EMA stack aligned with FVG direction
+  //   4. Inside entry window (10:00–11:30 AM ET)
+  //   5. Not already fired for this zone
+  //   6. Under max-alerts-per-direction cap
+  const mins = timeMins();
+  const inEntryWindow = mins >= ENTRY_WINDOW_START && mins <= ENTRY_WINDOW_END;
   let currentZone = null;
+
   for (const fvg of currentFVGs) {
-    if (price >= fvg.bottom && price <= fvg.top) {
-      currentZone = fvgKey(fvg);
-      if (s.activeZoneKey !== currentZone) {
-        const typeEmoji = fvg.type === 'BULL' ? '🟢' : '🔴';
+    if (price < fvg.bottom || price > fvg.top) continue;
+    currentZone = fvgKey(fvg);
 
-        // Check if VWAP and EMA align with the FVG direction
-        const vwapAligned = vwap != null
-          ? (fvg.type === 'BULL' ? price > vwap : price < vwap)
-          : null;
-        const emaAligned = (ma1 != null && ma2 != null)
-          ? (fvg.type === 'BULL' ? ma1 > ma2 : ma1 < ma2)
-          : null;
+    // Already fired for this exact zone? Skip.
+    if (s.firedZoneKeys.has(currentZone)) break;
 
-        const vwapNote = vwap != null
-          ? ` VWAP $${vwap.toFixed(2)} ${vwapAligned ? '✅' : '❌'}`
-          : '';
-        const emaNote = (ma1 != null && ma2 != null)
-          ? ` | EMA stack ${emaAligned ? '✅' : '❌'}`
-          : '';
+    // Confluence gate
+    if (vwap == null || ma1 == null || ma2 == null) break;
+    const vwapAligned = fvg.type === 'BULL' ? price > vwap : price < vwap;
+    const emaAligned = fvg.type === 'BULL' ? ma1 > ma2 : ma1 < ma2;
+    if (!vwapAligned || !emaAligned) break;
 
-        let action;
-        if (vwapAligned && emaAligned) {
-          action = fvg.type === 'BULL'
-            ? '✅ Valid CALL setup — watch for bounce at CE'
-            : '✅ Valid PUT setup — watch for rejection at CE';
-        } else if (vwapAligned === false && fvg.type === 'BEAR') {
-          action = `⚠️ Price ABOVE VWAP — this is likely a **gap-fill / bull move THROUGH the FVG**, NOT a PUT setup. If you're short here, danger zone.`;
-        } else if (vwapAligned === false && fvg.type === 'BULL') {
-          action = `⚠️ Price BELOW VWAP — this is likely a **bear continuation DOWN through the FVG**, NOT a CALL setup. If you're long here, danger zone.`;
-        } else {
-          action = `⏸ Wait — VWAP/EMA not aligned with FVG direction. Do NOT enter an option trade yet.`;
-        }
+    // Session window gate
+    if (!inEntryWindow) break;
 
-        await emit(`${typeEmoji} **${symbol} ENTERED ${fvg.type} FVG** — Price $${price.toFixed(2)} inside $${fvg.bottom.toFixed(2)}–$${fvg.top.toFixed(2)}. CE $${fvg.ce.toFixed(2)}.${vwapNote}${emaNote}\n${action}`);
-      }
-      break;
-    }
-  }
-  if (s.activeZoneKey && !currentZone) {
-    await emit(`↗️ **${symbol} EXITED FVG zone** — Price $${price.toFixed(2)} broke out of previously active FVG.`);
+    // Per-direction cap
+    const isCall = fvg.type === 'BULL';
+    const count = isCall ? s.callAlertCount : s.putAlertCount;
+    if (count >= MAX_ALERTS_PER_DIRECTION) break;
+
+    // All gates passed → fire the alert.
+    const emoji = isCall ? '🟢' : '🔴';
+    const direction = isCall ? 'CALL' : 'PUT';
+    const attempt = count === 0 ? '' : ` (re-entry attempt ${count + 1}/${MAX_ALERTS_PER_DIRECTION})`;
+    await emit(
+      `${emoji} **${symbol} ${direction} SETUP${attempt}** — Price $${price.toFixed(2)} inside ${fvg.type} FVG $${fvg.bottom.toFixed(2)}–$${fvg.top.toFixed(2)} | CE $${fvg.ce.toFixed(2)}\n` +
+      `Confluence: VWAP $${vwap.toFixed(2)} ✅ | EMA stack ✅ | Window 10:00–11:30 AM ✅\n` +
+      `Action: Enter ${direction}S. Stop if price exits FVG opposite side. Target = next swing.`
+    );
+    s.firedZoneKeys.add(currentZone);
+    if (isCall) s.callAlertCount++; else s.putAlertCount++;
+    break;
   }
   s.activeZoneKey = currentZone;
 
@@ -329,12 +335,8 @@ async function checkTimeEvents() {
   const globalState = state.__time || (state.__time = { fired: new Set() });
 
   const events = [
-    { mins: 9 * 60 + 30, key: 'open', msg: '🔔 **Market OPEN** — Do not trade the first 5 minutes. Watch for direction.' },
-    { mins: 10 * 60, key: 'gap-end', msg: '⏰ **10:00 AM** — Gap day protocol window ends. If applicable, confirm direction before entering.' },
-    { mins: 11 * 60 + 30, key: 'time-stop', msg: '⚠️ **11:30 AM TIME STOP** — If any position has not worked by now, EXIT regardless of P&L. News setups either work fast or not at all.' },
-    { mins: 12 * 60 + 30, key: '3hr-end', msg: '⏰ **12:30 PM** — First 3 hours done. Per your rules, no more trades today.' },
-    { mins: 13 * 60, key: 'tp2', msg: '🎯 **1:00 PM TP2 DEADLINE** — Close any remaining runner positions from morning trades.' },
-    { mins: 15 * 60, key: 'no-entries', msg: '🛑 **3:00 PM** — No new 0DTE entries from this point.' },
+    { mins: 9 * 60 + 30, key: 'open', msg: '🔔 **Market OPEN** — Do not trade the first 30 minutes. Setup alerts start at 10:00 AM ET.' },
+    { mins: 11 * 60 + 30, key: 'time-stop', msg: '⚠️ **11:30 AM TIME STOP** — If any position has not worked by now, EXIT regardless of P&L. Entry window closed.' },
     { mins: 15 * 60 + 30, key: 'hard-close', msg: '🚨 **3:30 PM HARD CLOSE** — Close ALL 0DTE positions NOW. No exceptions.' },
   ];
 
@@ -357,6 +359,7 @@ function maybeResetState() {
         lastPrice: null, lastVWAP: null, lastMA1: null, lastMA2: null,
         knownFVGKeys: new Set(), activeZoneKey: null,
         prevClose: null, gapAlertFired: false, firedTimeEvents: new Set(),
+        callAlertCount: 0, putAlertCount: 0, firedZoneKeys: new Set(),
       };
     }
     state.__time = { fired: new Set() };
@@ -376,20 +379,27 @@ async function tick() {
   if (mins < 9 * 60 + 15 || mins > 16 * 60) return;
 
   try {
+    if (!userOriginalSymbol) await captureUserSymbol();
     await checkTimeEvents();
     for (let i = 0; i < SYMBOLS.length; i++) {
       await checkSymbol(SYMBOLS[i]);
       if (i < SYMBOLS.length - 1) await new Promise(r => setTimeout(r, 1500));
     }
+    // Restore the chart to whatever the user was looking at before the poll cycle.
+    await restoreUserSymbol();
   } catch (err) {
     console.error(`[ERROR] tick failed: ${err.message}`);
+    // Still try to restore the chart even on failure.
+    try { await restoreUserSymbol(); } catch {}
   }
 }
 
-console.log('🎙  FVG Live Commentary started');
+console.log('🎙  FVG Live Commentary started (HIGH-CONFIDENCE MODE)');
 console.log('   Symbols: SPY + QQQ');
 console.log('   Poll:    every 1 minute');
-console.log('   Events:  VWAP cross, EMA flip, new FVG, zone entry/exit, time-based\n');
+console.log('   Alerts:  FVG entry + VWAP + EMA confluence, inside 10:00–11:30 AM ET');
+console.log('   Cap:     1 CALL + 1 PUT per symbol per day (re-entry allowed once)');
+console.log('   Time:    Market Open (9:30), Time Stop (11:30), Hard Close (15:30)\n');
 
 tick();
 setInterval(tick, POLL_INTERVAL_MS);
