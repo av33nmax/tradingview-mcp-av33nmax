@@ -4,10 +4,10 @@
  * NO orders placed.
  */
 import { IBApi, EventName } from '@stoqey/ib';
+import { IBKR_CONFIG, CLIENT_IDS, isInfoCode } from './ibkr_config.mjs';
 
-const HOST = '192.168.18.35';
-const PORT = 7497;            // 7497 = paper, 7496 = live
-const CLIENT_ID = 42;         // arbitrary unique number for this connection
+const { host: HOST, port: PORT } = IBKR_CONFIG;
+const CLIENT_ID = CLIENT_IDS.test_connect;
 
 const ib = new IBApi({ host: HOST, port: PORT, clientId: CLIENT_ID });
 
@@ -27,13 +27,9 @@ ib.on(EventName.connected, () => {
 });
 
 ib.on(EventName.error, (err, code, reqId) => {
-  // IBKR "errors" include informational messages (code 2104/2106/2158 = connectivity info). Not fatal.
   const msg = err?.message || String(err);
-  if (code && code >= 2100 && code <= 2200) {
-    console.log(`   ℹ info  [${code}]  ${msg}`);
-  } else {
-    console.log(`   ⚠ error [code=${code}  reqId=${reqId}]  ${msg}`);
-  }
+  if (isInfoCode(code)) console.log(`   ℹ info  [${code}]  ${msg}`);
+  else console.log(`   ⚠ error [code=${code}  reqId=${reqId}]  ${msg}`);
 });
 
 ib.on(EventName.accountSummary, (reqId, account, tag, value, currency) => {
