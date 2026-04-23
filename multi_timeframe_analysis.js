@@ -594,6 +594,32 @@ function scoreSymbol(tfs) {
         stops: { long: stopLong, short: stopShort },
         targets: bullish ? { T1: tgt1_up, T2: tgt2_up } : { T1: tgt1_dn, T2: tgt2_dn },
         invalidation: ema21_1H,
+        atr_15m: atr15,
+        // Structured blocks for annotation consumers (premarket_setup.mjs draws lines from these)
+        trigger_a: bullish ? {
+          entry: orbTriggerLong,
+          stop: stopLong,
+          T1: tgt1_up,
+          T2: tgt2_up,
+        } : {
+          entry: orbTriggerShort,
+          stop: stopShort,
+          T1: tgt1_dn,
+          T2: tgt2_dn,
+        },
+        trigger_b: bullish ? {
+          entry_vwap: vwap15,
+          entry_ema21_1H: ema21_1H,
+          stop: round((vwap15 || px) - atr15),
+          T1: Math.max(...(tf15.recentHighs || [px])),
+          T2: tgt1_up,
+        } : {
+          entry_vwap: vwap15,
+          entry_ema21_1H: ema21_1H,
+          stop: round((vwap15 || px) + atr15),
+          T1: Math.min(...(tf15.recentLows || [px])),
+          T2: tgt1_dn,
+        },
       };
     }
   }
