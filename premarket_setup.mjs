@@ -24,7 +24,13 @@
  */
 
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import CDP from 'chrome-remote-interface';
+
+const REPO_ROOT = path.dirname(fileURLToPath(import.meta.url));
+const ENTRY_NOTES_FILE = path.join(REPO_ROOT, 'latest_entry_notes.json');
 
 const CDP_HOST = 'localhost', CDP_PORT = 9222;
 const AUTO_LABEL_PREFIX = '[auto] ';
@@ -375,6 +381,33 @@ async function processTab(tab, config, analysisJson) {
   let analysisJson = null;
   try { analysisJson = await runAnalysisAndCapture(); }
   catch (e) { console.error(`  analysis failed: ${e.message}  (continuing without trigger annotations)`); }
+
+  // STEP 1.5: persist entry_notes so place_option_order.mjs can consume them.
+  // We write even when analysisJson is partial / NO_TRADE so consumers can see
+  // exactly what the latest run produced (and skip staging orders accordingly).
+  if (analysisJson?.final) {
+    const out = {
+      generatedAt: new Date().toISOString(),
+      tickers: {},
+    };
+    for (const [ticker, data] of Object.entries(analysisJson.final)) {
+      out.tickers[ticker] = {
+        bias: data.bias ?? null,
+        aligned: data.aligned ?? null,
+        entry_notes: data.entry_notes ?? null,  // null when NO_TRADE
+      };
+    }
+    try {
+      fs.writeFileSync(ENTRY_NOTES_FILE, JSON.stringify(out, null, 2));
+      console.log(`\n  wrote ${path.basename(ENTRY_NOTES_FILE)} — ${Object.keys(out.tickers).length} ticker(s)`);
+      for (const [t, d] of Object.entries(out.tickers)) {
+        const status = d.entry_notes ? `✓ tradeable (${d.entry_notes.direction})` : `skip (${d.bias})`;
+        console.log(`    ${t}: ${status}`);
+      }
+    } catch (e) {
+      console.log(`  ⚠ could not write ${ENTRY_NOTES_FILE}: ${e.message}`);
+    }
+  }
 
   // STEP 2: cleanup + deep S/R + FVG zones + trigger annotations on each tab
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

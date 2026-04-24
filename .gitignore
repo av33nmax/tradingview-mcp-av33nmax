@@ -4,3 +4,5 @@ scripts/current.pine
 temp_*
 *.log
 discovery-log.json
+latest_entry_notes.json
+traded_today.json
