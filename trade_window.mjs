@@ -82,7 +82,11 @@ function parseArgs() {
     process.exit(1);
   }
 
-  let untilStr = '23:00';
+  // Default now 02:00 SGT (covers the full 9:45-14:00 ET trade window per
+  // rules.json). If the target time is already past today (script started
+  // late), auto-roll to tomorrow — otherwise the watcher would refuse to
+  // start for the common 9 PM SGT start + 2 AM SGT stop pattern.
+  let untilStr = '02:00';
   const untilIdx = args.indexOf('--until');
   if (untilIdx >= 0 && args[untilIdx + 1]) untilStr = args[untilIdx + 1];
 
@@ -94,7 +98,13 @@ function parseArgs() {
   const until = new Date();
   until.setHours(h, m, 0, 0);
   if (until.getTime() <= Date.now()) {
-    console.error(`--until ${untilStr} is in the past. Exiting.`);
+    // Roll to tomorrow — handles the "start at 9 PM, stop at 2 AM" case
+    until.setDate(until.getDate() + 1);
+  }
+  // Sanity cap: never run longer than 24 hours from now
+  const maxUntil = Date.now() + 24 * 60 * 60 * 1000;
+  if (until.getTime() > maxUntil) {
+    console.error(`--until ${untilStr} resolves to more than 24h away. Exiting.`);
     process.exit(1);
   }
 
@@ -187,7 +197,14 @@ const errorCounts = new Map();
 ib.on(EventName.nextValidId, (id) => { nextOrderId = id; });
 ib.on(EventName.error, (err, code, reqId) => {
   if (isInfoCode(code)) return;
-  if (code === 162 || code === 200 || code === 300 || code === 354 || code === 2137) return;
+  // Previously suppressed: 162 (historical data pacing/no-data). Now we surface
+  // it because that's exactly the signal we need to diagnose "0 bars" issues.
+  // Other known-noisy codes still silenced:
+  //   200 = contract not found (happens during strike scans for expired strikes)
+  //   300 = can't find contract
+  //   354 = no market data subscription
+  //   2137 = common TWS warning we don't care about
+  if (code === 200 || code === 300 || code === 354 || code === 2137) return;
   errorCounts.set(code, (errorCounts.get(code) || 0) + 1);
   if (errorCounts.get(code) === 1) {
     console.log(`   [first] error [code=${code}  reqId=${reqId}]  ${err?.message || err}`);
@@ -212,28 +229,87 @@ function notify(title, message, sound = 'Submarine') {
 }
 
 // ─── Candle-close validator ──────────────────────────────────────────────────
+
+// Helper that emits a __CHECK__ marker on EVERY return path so the dashboard
+// can render every validation attempt in the last-check row, including early
+// failures like insufficient bars or stale data.
+function emitCheckMarker(payload) {
+  console.log(`__CHECK__ ${JSON.stringify(payload)}`);
+}
+
+// Track consecutive 0-bar responses across calls — we warn the user if IBKR
+// appears to be starved (usually means TWS pacing, permissions, or dead feed).
+let consecutiveZeroBars = 0;
+
+// Try a few duration widths if IBKR returns an empty result. Some TWS setups
+// (paper account without market data subscriptions, pacing after a long run)
+// return [] for '1 D' but will return data for '5 D' or '10 D'.
+async function fetchStockBarsWithRetry(stockContract) {
+  const durations = ['2 D', '5 D', '10 D'];
+  for (const duration of durations) {
+    const bars = await reqHistoricalBars(ib, stockContract, duration, '15 mins', 'TRADES', 1);
+    if (bars.length > 0) {
+      if (duration !== '2 D') {
+        console.log(`   (IBKR returned 0 bars on 2 D, recovered with ${duration})`);
+      }
+      return { bars, duration };
+    }
+  }
+  return { bars: [], duration: durations[durations.length - 1] };
+}
+
 async function validateCandleClose() {
   const stockContract = {
     symbol: ticker, secType: 'STK', exchange: 'SMART', currency: 'USD',
   };
-  const bars = await reqHistoricalBars(ib, stockContract, '1 D', '15 mins', 'TRADES', 1);
 
-  if (bars.length < VOLUME_LOOKBACK_BARS + 1) {
-    return { triggered: false, reason: `insufficient bars (${bars.length})` };
-  }
-  bars.sort((a, b) => a.time - b.time);
+  const { bars, duration } = await fetchStockBarsWithRetry(stockContract);
 
   const nowSec = Math.floor(Date.now() / 1000);
+  const barTimeET = bars.length
+    ? new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit' }).format(new Date(bars[bars.length - 1].time * 1000))
+    : null;
+
+  // Zero-bar path — warn aggressively
+  if (bars.length === 0) {
+    consecutiveZeroBars++;
+    const reason = consecutiveZeroBars >= 3
+      ? `IBKR returned 0 bars (duration ${duration}) — ${consecutiveZeroBars} consecutive. TWS feed likely degraded.`
+      : `IBKR returned 0 bars (duration ${duration})`;
+    emitCheckMarker({ ticker, triggered: false, reason, close: null, rVol: null, barTime: null, entryPrice, direction });
+    if (consecutiveZeroBars === 3) {
+      console.log(`⚠ IBKR historical data appears degraded: 3 consecutive 0-bar responses.`);
+      console.log(`  Check TWS on the other laptop. Restart TWS if needed, then re-arm the watcher.`);
+    }
+    return { triggered: false, reason };
+  }
+
+  // We got bars — reset counter
+  consecutiveZeroBars = 0;
+
+  if (bars.length < VOLUME_LOOKBACK_BARS + 1) {
+    const reason = `insufficient bars (${bars.length}, need ${VOLUME_LOOKBACK_BARS + 1}+)`;
+    emitCheckMarker({ ticker, triggered: false, reason, close: null, rVol: null, barTime: barTimeET, entryPrice, direction });
+    return { triggered: false, reason };
+  }
+
+  bars.sort((a, b) => a.time - b.time);
   const completed = bars.filter(b => b.time + 15 * 60 <= nowSec);
   if (completed.length < VOLUME_LOOKBACK_BARS + 1) {
-    return { triggered: false, reason: `only ${completed.length} completed bars` };
+    const reason = `only ${completed.length} completed bars (need ${VOLUME_LOOKBACK_BARS + 1}+)`;
+    emitCheckMarker({ ticker, triggered: false, reason, close: null, rVol: null, barTime: barTimeET, entryPrice, direction });
+    return { triggered: false, reason };
   }
+
   const lastClosed = completed[completed.length - 1];
   const priorBars = completed.slice(-(VOLUME_LOOKBACK_BARS + 1), -1);
 
   const barAgeMin = (nowSec - lastClosed.time - 15 * 60) / 60;
   if (barAgeMin > 20) {
-    return { triggered: false, reason: `stale bar (${barAgeMin.toFixed(0)}m old) — market may be closed` };
+    const reason = `stale bar (${barAgeMin.toFixed(0)}m old) — market may be closed`;
+    const lastBarTime = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit' }).format(new Date(lastClosed.time * 1000));
+    emitCheckMarker({ ticker, triggered: false, reason, close: lastClosed.close, rVol: null, barTime: lastBarTime, entryPrice, direction });
+    return { triggered: false, reason };
   }
 
   const avgVol = priorBars.reduce((s, b) => s + b.volume, 0) / priorBars.length;
@@ -243,34 +319,38 @@ async function validateCandleClose() {
     ? lastClosed.close > entryPrice
     : lastClosed.close < entryPrice;
 
-  const barTimeET = new Intl.DateTimeFormat('en-US', {
+  const lastBarTime = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit',
   }).format(new Date(lastClosed.time * 1000));
 
   const cmp = direction === 'CALLS' ? '>' : '<';
-  const summary = `bar[${barTimeET} ET] close=${lastClosed.close.toFixed(2)} ${cmp}${entryPrice.toFixed(2)}=${crossed ? 'YES' : 'no'} rVol=${rVol.toFixed(2)}`;
+  const summary = `bar[${lastBarTime} ET] close=${lastClosed.close.toFixed(2)} ${cmp}${entryPrice.toFixed(2)}=${crossed ? 'YES' : 'no'} rVol=${rVol.toFixed(2)}`;
 
-  // Emit structured check marker so the dashboard SSE consumer can parse it
-  // without string-matching stdout. Appears as a regular stdout line that
-  // starts with __CHECK__ followed by JSON.
-  const emitCheck = (triggered) => {
-    const payload = {
-      ticker, triggered,
-      barTime: barTimeET,
-      close: lastClosed.close,
-      rVol,
-      entryPrice,
-      direction,
-      reason: summary,
-    };
-    console.log(`__CHECK__ ${JSON.stringify(payload)}`);
+  const basePayload = {
+    ticker,
+    barTime: lastBarTime,
+    close: lastClosed.close,
+    rVol,
+    entryPrice,
+    direction,
   };
 
-  if (!crossed) { emitCheck(false); return { triggered: false, reason: summary }; }
-  if (rVol < RVOL_THRESHOLD) { emitCheck(false); return { triggered: false, reason: `${summary} (below ${RVOL_THRESHOLD})` }; }
-  if (!isWithinTradingWindow()) { emitCheck(false); return { triggered: false, reason: `${summary} BUT outside trading window [9:45-14:00 ET]` }; }
+  if (!crossed) {
+    emitCheckMarker({ ...basePayload, triggered: false, reason: summary });
+    return { triggered: false, reason: summary };
+  }
+  if (rVol < RVOL_THRESHOLD) {
+    const reason = `${summary} (rVol below ${RVOL_THRESHOLD})`;
+    emitCheckMarker({ ...basePayload, triggered: false, reason });
+    return { triggered: false, reason };
+  }
+  if (!isWithinTradingWindow()) {
+    const reason = `${summary} BUT outside trading window [9:45-14:00 ET]`;
+    emitCheckMarker({ ...basePayload, triggered: false, reason });
+    return { triggered: false, reason };
+  }
 
-  emitCheck(true);
+  emitCheckMarker({ ...basePayload, triggered: true, reason: summary });
   return { triggered: true, reason: summary, rVol, lastClosed };
 }
 
