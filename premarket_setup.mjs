@@ -417,7 +417,13 @@ async function processTab(tab, config, analysisJson) {
   const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`);
   const targets = await resp.json();
   const chartTabs = targets.filter(t => t.type === 'page' && /tradingview\.com\/chart/i.test(t.url));
-  if (!chartTabs.length) { console.error('No TradingView chart tab found'); process.exit(1); }
+  if (!chartTabs.length) {
+    console.error('❌ No TradingView chart tab found.');
+    console.error('   Most common cause: TradingView was just launched and tabs are still loading.');
+    console.error('   Try: re-run "Launch TradingView (CDP)" from the dashboard (waits for tab restore),');
+    console.error('        OR open your SPY and QQQ charts in TV manually, then retry this command.');
+    process.exit(1);
+  }
 
   // Identify each tab by the symbol on pane 0
   const matched = [];

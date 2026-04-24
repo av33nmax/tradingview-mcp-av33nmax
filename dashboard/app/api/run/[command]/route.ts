@@ -31,9 +31,9 @@ const COMMANDS: Record<string, CommandSpec> = {
     label: "IBKR connection test",
   },
   "launch-tv": {
-    cmd: "bash",
-    args: ["scripts/launch_tv_debug_mac.sh"],
-    label: "Launch TradingView (CDP)",
+    cmd: "node",
+    args: ["scripts/launch_tv_with_tabs.mjs"],
+    label: "Launch TradingView (CDP) + wait for tabs",
   },
 };
 
