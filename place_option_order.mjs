@@ -41,7 +41,11 @@ const REPO_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const ENTRY_NOTES_FILE = path.join(REPO_ROOT, 'latest_entry_notes.json');
 
 // ─── Config ──────────────────────────────────────────────────────────────────
-const STAGED_MODE = true;
+// STAGED_MODE = false → entry order auto-transmits (YES prompt is the sole gate)
+// STAGED_MODE = true  → entry order stages in TWS, requires manual Transmit click
+// Starting with auto-transmit for paper testing. Flip to true for live or to
+// re-add the second-gate click safety.
+const STAGED_MODE = false;
 const PREMIUM_MIN = 0.50;
 const PREMIUM_MAX = 0.90;
 const MAX_RISK_USD = 300;
@@ -178,6 +182,11 @@ async function main() {
   });
 
   clearTimeout(overallTimeout);  // user has unlimited time to decide
+
+  if (!STAGED_MODE) {
+    console.log(`\n⚠ AUTO-TRANSMIT mode — typing YES will submit the order to the market immediately.`);
+    console.log(`  (paper account ${IBKR_CONFIG.port} — no real money at risk)`);
+  }
 
   const answer = await promptYes(`\nType "YES" to ${STAGED_MODE ? 'STAGE in TWS' : 'FIRE NOW'}, anything else to abort: `);
   if (answer !== 'YES') {

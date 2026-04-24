@@ -60,7 +60,11 @@ const PREMIUM_MIN = 0.50;
 const PREMIUM_MAX = 0.90;
 const MAX_RISK_USD = 300;
 const STRIKES_TO_QUERY = 20;
-const STAGED_MODE = true;                  // transmit=false — user clicks Transmit in TWS
+// STAGED_MODE = false → entry order auto-transmits (YES prompt is the sole gate)
+// STAGED_MODE = true  → entry order stages in TWS, requires manual Transmit click
+// Starting with auto-transmit for paper testing. Flip to true for live or to
+// re-add the second-gate click safety.
+const STAGED_MODE = false;
 const BRACKET_ENABLED = true;              // auto-place T1 + stop as OCA after fill
 const RVOL_THRESHOLD = 1.2;
 const VOLUME_LOOKBACK_BARS = 20;
@@ -284,6 +288,11 @@ async function handleTriggered() {
     port: IBKR_CONFIG.port, staged: STAGED_MODE,
   });
 
+  if (!STAGED_MODE) {
+    console.log(`\n⚠ AUTO-TRANSMIT mode — typing YES will submit the order to the market immediately.`);
+    console.log(`  (paper account ${IBKR_CONFIG.port} — no real money at risk)`);
+  }
+
   const answer = await promptYes(`\nType "YES" to ${STAGED_MODE ? 'STAGE in TWS' : 'FIRE NOW'}, anything else to abort: `);
   if (answer !== 'YES') { console.log(`   aborted — no order placed`); return false; }
 
@@ -432,7 +441,7 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
 console.log(`  Loaded entry_notes (${ageHrs.toFixed(1)}h old): ${ticker} ${direction}`);
 console.log(`  Trigger A: 15m close ${direction === 'CALLS' ? '>' : '<'} ${entryPrice.toFixed(2)} with rVol ≥ ${RVOL_THRESHOLD}`);
 console.log(`  Window:    now (${nowETStr()}) → ${untilStr} SGT`);
-console.log(`  Mode:      ${testMode ? 'TEST (no order placement)' : 'LIVE (will prompt for YES on trigger)'}`);
+console.log(`  Mode:      ${testMode ? 'TEST (no order placement)' : STAGED_MODE ? 'STAGED (YES → stage in TWS → click Transmit)' : 'AUTO-TRANSMIT (YES fires immediately)'}`);
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
 (async () => {
