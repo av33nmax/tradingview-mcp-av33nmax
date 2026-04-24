@@ -28,6 +28,8 @@ import {
   promptYes,
   printOrderSpec,
   placeStagedOrder,
+  placeOCABracketExits,
+  printBracketSpec,
 } from './ibkr_orders.mjs';
 import {
   hasTradedToday,
@@ -44,6 +46,7 @@ const PREMIUM_MIN = 0.50;
 const PREMIUM_MAX = 0.90;
 const MAX_RISK_USD = 300;
 const STRIKES_TO_QUERY = 20;
+const BRACKET_ENABLED = true;  // auto-place T1 + stop as OCA bracket after entry fills
 
 // ─── Mock entry_notes (stale fallback — only used if premarket_setup hasn't written the JSON) ──
 const MOCK = {
@@ -207,8 +210,51 @@ async function main() {
     console.log(`\n   Listening for fills for 60s (if you transmit in TWS)...`);
   }
 
+  // Bracket auto-placement state: fires once, when the entry order first fills
+  let bracketArmed = false;
+  const underlyingConId = await resolveStockConId(ib, ticker);
+  const t1Price = exitSpec?.T1;
+  const stopPrice = triggerArg === 'A' ? exitSpec?.stop : exitSpec?.stop;
+
   ib.on(EventName.orderStatus, (id, status, filled, remaining, avgFillPrice, permId, parentId, lastFillPrice, clientId, whyHeld) => {
+    if (id !== orderId) return;
     console.log(`   orderStatus  id=${id}  status=${status}  filled=${filled}  remaining=${remaining}  avgFill=${avgFillPrice ?? '-'}  lastFill=${lastFillPrice ?? '-'}${whyHeld ? `  whyHeld=${whyHeld}` : ''}`);
+
+    // Auto-arm OCA bracket once entry has any fills and is fully Filled
+    if (
+      BRACKET_ENABLED &&
+      !bracketArmed &&
+      status === 'Filled' &&
+      Number(filled) > 0 &&
+      Number(remaining) === 0 &&
+      Number.isFinite(t1Price) &&
+      Number.isFinite(stopPrice)
+    ) {
+      bracketArmed = true;
+      const actualQty = Number(filled);
+      if (actualQty < qty) {
+        console.log(`   ℹ partial fill detected: sizing bracket to actual ${actualQty} (planned ${qty})`);
+      }
+      try {
+        const t1OrderId = nextOrderId++;
+        const stopOrderId = nextOrderId++;
+        const right = direction === 'CALLS' ? 'C' : 'P';
+        const br = placeOCABracketExits({
+          ib, ticker, expiry, strike: pick.strike, right, qty: actualQty, direction,
+          underlyingConId,
+          t1Price, stopPrice,
+          t1OrderId, stopOrderId,
+        });
+        printBracketSpec({
+          ticker, direction, strike: pick.strike, right, qty: actualQty,
+          t1Price, stopPrice, entryUnderlying: entryPrice,
+          t1OrderId: br.t1OrderId, stopOrderId: br.stopOrderId, ocaGroup: br.ocaGroup,
+        });
+      } catch (e) {
+        console.log(`   ⚠ bracket placement failed: ${e.message}`);
+        console.log(`   You will need to set your exits manually in TWS.`);
+      }
+    }
   });
   ib.on(EventName.execDetails, (reqId, contract, execution) => {
     console.log(`   💰 EXEC  ${execution.side} ${execution.shares} @ $${execution.price}  time=${execution.time}  exchange=${execution.exchange}`);
@@ -218,13 +264,16 @@ async function main() {
   recordTrade(ticker, {
     orderId, strike: pick.strike, right: direction === 'CALLS' ? 'C' : 'P',
     qty, premiumEst: pick.mid, direction, expiry, trigger: triggerArg, entryTrigger: entryPrice,
+    bracket: BRACKET_ENABLED ? { t1: t1Price, stop: stopPrice } : null,
   });
 
+  // Keep connection open a bit longer so we can place the bracket if fill comes
+  // after the initial 60s. Bumped to 120s; user can Ctrl+C anytime.
   setTimeout(() => {
-    console.log(`\n   (exiting — order remains in TWS)`);
+    console.log(`\n   (exiting — order remains in TWS${bracketArmed ? ', bracket armed' : ''})`);
     ib.disconnect();
     setTimeout(() => process.exit(0), 300);
-  }, 60000);
+  }, 120000);
 }
 
 main().catch(e => { console.error('FATAL:', e.message); ib.disconnect(); process.exit(1); });

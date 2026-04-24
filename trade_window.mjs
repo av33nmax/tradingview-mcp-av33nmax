@@ -43,6 +43,8 @@ import {
   promptYes,
   printOrderSpec,
   placeStagedOrder,
+  placeOCABracketExits,
+  printBracketSpec,
 } from './ibkr_orders.mjs';
 import {
   hasTradedToday,
@@ -59,6 +61,7 @@ const PREMIUM_MAX = 0.90;
 const MAX_RISK_USD = 300;
 const STRIKES_TO_QUERY = 20;
 const STAGED_MODE = true;                  // transmit=false — user clicks Transmit in TWS
+const BRACKET_ENABLED = true;              // auto-place T1 + stop as OCA after fill
 const RVOL_THRESHOLD = 1.2;
 const VOLUME_LOOKBACK_BARS = 20;
 const STALE_ENTRY_NOTES_HOURS = 4;
@@ -300,9 +303,49 @@ async function handleTriggered() {
     console.log(`   Go to TWS Orders tab → click Transmit on the "Pending Transmission" row.`);
   }
 
+  // Auto-arm OCA bracket exits once the entry fills
+  let bracketArmed = false;
+  const underlyingConId = await resolveStockConId(ib, ticker);
+  const t1Price = triggerA.T1;
+  const stopPrice = triggerA.stop;
+
   ib.on(EventName.orderStatus, (id, status, filled, remaining, avgFillPrice) => {
-    if (id === orderId) {
-      console.log(`   orderStatus  status=${status}  filled=${filled}  remaining=${remaining}  avgFill=${avgFillPrice ?? '-'}`);
+    if (id !== orderId) return;
+    console.log(`   orderStatus  status=${status}  filled=${filled}  remaining=${remaining}  avgFill=${avgFillPrice ?? '-'}`);
+
+    if (
+      BRACKET_ENABLED &&
+      !bracketArmed &&
+      status === 'Filled' &&
+      Number(filled) > 0 &&
+      Number(remaining) === 0 &&
+      Number.isFinite(t1Price) &&
+      Number.isFinite(stopPrice)
+    ) {
+      bracketArmed = true;
+      const actualQty = Number(filled);
+      if (actualQty < qty) {
+        console.log(`   ℹ partial fill detected: sizing bracket to actual ${actualQty} (planned ${qty})`);
+      }
+      try {
+        const t1OrderId = nextOrderId++;
+        const stopOrderId = nextOrderId++;
+        const right = direction === 'CALLS' ? 'C' : 'P';
+        const br = placeOCABracketExits({
+          ib, ticker, expiry, strike: pick.strike, right, qty: actualQty, direction,
+          underlyingConId,
+          t1Price, stopPrice,
+          t1OrderId, stopOrderId,
+        });
+        printBracketSpec({
+          ticker, direction, strike: pick.strike, right, qty: actualQty,
+          t1Price, stopPrice, entryUnderlying: entryPrice,
+          t1OrderId: br.t1OrderId, stopOrderId: br.stopOrderId, ocaGroup: br.ocaGroup,
+        });
+      } catch (e) {
+        console.log(`   ⚠ bracket placement failed: ${e.message}`);
+        console.log(`   You will need to set your exits manually in TWS.`);
+      }
     }
   });
 
@@ -310,9 +353,13 @@ async function handleTriggered() {
   recordTrade(ticker, {
     orderId, strike: pick.strike, right: direction === 'CALLS' ? 'C' : 'P',
     qty, premiumEst: pick.mid, direction, expiry, entryTrigger: entryPrice,
+    bracket: BRACKET_ENABLED ? { t1: t1Price, stop: stopPrice } : null,
   });
 
-  await new Promise(r => setTimeout(r, 10000));
+  // Wait a bit longer — if the user Transmits soon, we'll catch the fill
+  // and place the bracket within this window. If they take longer, the
+  // event loop continues but the script exits this function.
+  await new Promise(r => setTimeout(r, 15000));
   return true;
 }
 

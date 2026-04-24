@@ -13,6 +13,10 @@
  *   promptYes              — readline prompt that returns trimmed answer
  *   printOrderSpec         — consistent order-spec box for CLI
  *   placeStagedOrder       — places order via ib.placeOrder, returns metadata
+ *   placeOCABracketExits   — after an option entry fills, places T1 take-profit
+ *                            + stop-loss as an OCA group, both triggered by the
+ *                            underlying stock's price (not the option price).
+ *                            When one fires, the other auto-cancels.
  *
  * Design notes:
  *   - All functions take `ib` (IBApi instance) as first arg — no hidden globals
@@ -22,6 +26,9 @@
  *   - Timeouts fail-safe: functions resolve (not reject) on timeout when safe
  */
 import { EventName, SecType } from '@stoqey/ib';
+import { PriceCondition } from '@stoqey/ib/dist/api/order/condition/price-condition.js';
+import { TriggerMethod } from '@stoqey/ib/dist/api/order/enum/trigger-method.js';
+import { ConjunctionConnection } from '@stoqey/ib/dist/api/order/enum/conjunction-connection.js';
 import readline from 'node:readline';
 
 let _reqIdCounter = 50000;
@@ -239,4 +246,130 @@ export function placeStagedOrder({
   };
   ib.placeOrder(orderId, contract, order);
   return { orderId, contract, order };
+}
+
+// ─── OCA Bracket Exits (T1 take-profit + stop-loss linked as OCA) ───────────
+//
+// Places TWO conditional SELL orders after an option entry fills:
+//   1) Take-profit: SELL @ MKT when underlying reaches T1 price
+//   2) Stop-loss:   SELL @ MKT when underlying reaches stop price
+// Both orders are in the same OCA group (ocaType=1) so when one fills,
+// the other is automatically cancelled by IBKR.
+//
+// Conditions trigger on the UNDERLYING stock price (not the option price).
+// This matches the plan levels exactly and avoids the "option wick-out"
+// problem where option-price stops fire on a wide spread tick.
+//
+// For CALLS (long call):
+//   - T1 fires when underlying >= T1_underlying (price rose)
+//   - stop fires when underlying <= stop_underlying (price fell)
+// For PUTS (long put):
+//   - T1 fires when underlying <= T1_underlying (price fell)
+//   - stop fires when underlying >= stop_underlying (price rose)
+//
+// Returns { ocaGroup, t1OrderId, stopOrderId }.
+export function placeOCABracketExits({
+  ib, ticker, expiry, strike, right, qty, direction,
+  underlyingConId,
+  t1Price, stopPrice,
+  t1OrderId, stopOrderId,
+  ocaGroupName,
+  staged = false,  // default false — auto-send exits (entry is where the YES gate lives)
+}) {
+  if (!underlyingConId) throw new Error('placeOCABracketExits: underlyingConId is required');
+  if (!Number.isFinite(t1Price) || !Number.isFinite(stopPrice)) {
+    throw new Error('placeOCABracketExits: t1Price and stopPrice must be numbers');
+  }
+  if (!Number.isInteger(qty) || qty < 1) {
+    throw new Error('placeOCABracketExits: qty must be a positive integer');
+  }
+
+  const optContract = {
+    symbol: ticker,
+    secType: SecType.OPT,
+    exchange: 'SMART',
+    currency: 'USD',
+    lastTradeDateOrContractMonth: expiry,
+    strike,
+    right,
+    multiplier: '100',
+  };
+
+  const ocaGroup = ocaGroupName || `brk-${ticker}-${strike}${right}-${Date.now()}`;
+
+  // Build the price condition via @stoqey/ib's PriceCondition class.
+  // `isMore: true`  → fires when the referenced price is >= threshold
+  // `isMore: false` → fires when the referenced price is <= threshold
+  // TriggerMethod.Default = last trade / midpoint (0)
+  function priceCondition(price, isMore) {
+    return new PriceCondition(
+      price,
+      TriggerMethod.Default,
+      underlyingConId,
+      'SMART',
+      isMore,
+      ConjunctionConnection.AND,
+    );
+  }
+
+  // For CALLS: T1 is ABOVE entry (price rose), stop is BELOW entry (price fell)
+  // For PUTS:  T1 is BELOW entry (price fell), stop is ABOVE entry (price rose)
+  const isCallsDirection = direction === 'CALLS';
+  const t1IsMore   = isCallsDirection ? true  : false;   // CALLS: fires on price >=, PUTS: on <=
+  const stopIsMore = isCallsDirection ? false : true;    // CALLS: fires on <=, PUTS: on >=
+
+  const commonOrder = {
+    action: 'SELL',
+    totalQuantity: qty,
+    orderType: 'MKT',
+    tif: 'DAY',
+    ocaGroup,
+    ocaType: 1,                      // 1 = cancel with block (other members cancelled on fill)
+    firmQuoteOnly: false,
+    eTradeOnly: false,
+    conditionsCancelOrder: false,    // condition triggers order, does not cancel it
+  };
+
+  const t1Order = {
+    ...commonOrder,
+    conditions: [priceCondition(t1Price, t1IsMore)],
+    orderRef: `T1 @ ${t1Price}`,
+    transmit: staged ? false : false,  // leaves staged/live controlled by the group transmit pattern below
+  };
+
+  const stopOrder = {
+    ...commonOrder,
+    conditions: [priceCondition(stopPrice, stopIsMore)],
+    orderRef: `STOP @ ${stopPrice}`,
+    transmit: true,  // last order in the group sends the whole OCA
+  };
+
+  // First order must be staged (transmit=false); last order triggers submission
+  t1Order.transmit = false;
+
+  ib.placeOrder(t1OrderId, optContract, t1Order);
+  ib.placeOrder(stopOrderId, optContract, stopOrder);
+
+  return { ocaGroup, t1OrderId, stopOrderId, t1Order, stopOrder };
+}
+
+// ─── Print a bracket summary box ─────────────────────────────────────────────
+export function printBracketSpec({
+  ticker, direction, strike, right, qty, t1Price, stopPrice,
+  entryUnderlying, t1OrderId, stopOrderId, ocaGroup,
+}) {
+  const rightLabel = direction === 'CALLS' ? 'CALL' : 'PUT';
+  console.log(`\n────────────────────────────────────────────────────────────────`);
+  console.log(`  OCA BRACKET — automated exits now armed in TWS`);
+  console.log(`────────────────────────────────────────────────────────────────`);
+  console.log(`  Contract:     ${ticker} ${strike} ${rightLabel} · ${qty} contract(s)`);
+  console.log(`  T1 exit:      SELL MKT when ${ticker} ${direction === 'CALLS' ? '>=' : '<='} ${t1Price.toFixed(2)}   (orderId=${t1OrderId})`);
+  console.log(`  Stop exit:    SELL MKT when ${ticker} ${direction === 'CALLS' ? '<=' : '>='} ${stopPrice.toFixed(2)}   (orderId=${stopOrderId})`);
+  console.log(`  OCA group:    ${ocaGroup}   (one fills → the other auto-cancels)`);
+  if (entryUnderlying != null) {
+    const t1Dist   = Math.abs(t1Price - entryUnderlying).toFixed(2);
+    const stopDist = Math.abs(entryUnderlying - stopPrice).toFixed(2);
+    console.log(`  R:R to T1:    ${(parseFloat(t1Dist) / parseFloat(stopDist)).toFixed(2)}  (T1 +$${t1Dist} / stop −$${stopDist} from trigger)`);
+  }
+  console.log(`────────────────────────────────────────────────────────────────`);
 }
