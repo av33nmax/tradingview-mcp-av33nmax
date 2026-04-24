@@ -249,10 +249,27 @@ async function validateCandleClose() {
   const cmp = direction === 'CALLS' ? '>' : '<';
   const summary = `bar[${barTimeET} ET] close=${lastClosed.close.toFixed(2)} ${cmp}${entryPrice.toFixed(2)}=${crossed ? 'YES' : 'no'} rVol=${rVol.toFixed(2)}`;
 
-  if (!crossed) return { triggered: false, reason: summary };
-  if (rVol < RVOL_THRESHOLD) return { triggered: false, reason: `${summary} (below ${RVOL_THRESHOLD})` };
-  if (!isWithinTradingWindow()) return { triggered: false, reason: `${summary} BUT outside trading window [9:45-14:00 ET]` };
+  // Emit structured check marker so the dashboard SSE consumer can parse it
+  // without string-matching stdout. Appears as a regular stdout line that
+  // starts with __CHECK__ followed by JSON.
+  const emitCheck = (triggered) => {
+    const payload = {
+      ticker, triggered,
+      barTime: barTimeET,
+      close: lastClosed.close,
+      rVol,
+      entryPrice,
+      direction,
+      reason: summary,
+    };
+    console.log(`__CHECK__ ${JSON.stringify(payload)}`);
+  };
 
+  if (!crossed) { emitCheck(false); return { triggered: false, reason: summary }; }
+  if (rVol < RVOL_THRESHOLD) { emitCheck(false); return { triggered: false, reason: `${summary} (below ${RVOL_THRESHOLD})` }; }
+  if (!isWithinTradingWindow()) { emitCheck(false); return { triggered: false, reason: `${summary} BUT outside trading window [9:45-14:00 ET]` }; }
+
+  emitCheck(true);
   return { triggered: true, reason: summary, rVol, lastClosed };
 }
 
@@ -292,6 +309,24 @@ async function handleTriggered() {
     console.log(`\n⚠ AUTO-TRANSMIT mode — typing YES will submit the order to the market immediately.`);
     console.log(`  (paper account ${IBKR_CONFIG.port} — no real money at risk)`);
   }
+
+  // Emit structured prompt marker so the dashboard can show a confirm modal.
+  // The dashboard will POST YES (or anything else) back into stdin to resolve
+  // the readline.question below.
+  const promptPayload = {
+    ticker,
+    direction,
+    strike: pick.strike,
+    expiry,
+    qty,
+    premiumEst: pick.mid,
+    underlyingEntry: entryPrice,
+    stop: triggerA.stop,
+    T1: triggerA.T1,
+    T2: triggerA.T2 ?? null,
+    bracket: BRACKET_ENABLED ? { t1: triggerA.T1, stop: triggerA.stop } : null,
+  };
+  console.log(`__PROMPT_YES__ ${JSON.stringify(promptPayload)}`);
 
   const answer = await promptYes(`\nType "YES" to ${STAGED_MODE ? 'STAGE in TWS' : 'FIRE NOW'}, anything else to abort: `);
   if (answer !== 'YES') { console.log(`   aborted — no order placed`); return false; }

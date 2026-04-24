@@ -2,8 +2,8 @@
 
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { WatcherControls } from "@/components/watcher-controls";
 import { cn } from "@/lib/utils";
 import {
   ArrowUpRight,
@@ -117,18 +117,7 @@ export function TickerCard({ ticker, bias, aligned, direction, triggerA, trigger
               <span>{direction ? `${direction} · 0DTE` : "no setup"}</span>
             </div>
           </div>
-          <Button
-            size="sm"
-            disabled={!tradeable}
-            className={cn(
-              "w-full sm:w-auto shrink-0 rounded-full px-5 font-semibold transition-colors",
-              tradeable
-                ? "bg-[#c8a978] hover:bg-[#d4b588] text-[#09090b] shadow-[0_0_0_1px_rgba(200,169,120,0.35)]"
-                : "bg-white/[0.05] text-[#71717a]",
-            )}
-          >
-            {tradeable ? "Arm watcher" : "Skip"}
-          </Button>
+          <WatcherControls ticker={ticker} disabled={!tradeable} />
         </div>
       </CardHeader>
 
