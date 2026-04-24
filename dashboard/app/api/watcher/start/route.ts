@@ -32,6 +32,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const ticker = String(body?.ticker ?? "").toUpperCase();
   const untilStr = String(body?.until ?? "23:00");
+  const testFire = body?.testFire === true;
 
   if (!ALLOWED_TICKERS.has(ticker)) {
     return NextResponse.json(
@@ -53,7 +54,9 @@ export async function POST(req: Request) {
 
   let child;
   try {
-    child = spawn("node", ["trade_window.mjs", ticker, "--until", untilStr], {
+    const args = ["trade_window.mjs", ticker, "--until", untilStr];
+    if (testFire) args.push("--test-fire");
+    child = spawn("node", args, {
       cwd: REPO_ROOT,
       env: { ...process.env, FORCE_COLOR: "0" },
       stdio: ["pipe", "pipe", "pipe"],

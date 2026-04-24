@@ -7,7 +7,8 @@ import { TickerCard, type TickerCardProps } from "@/components/ticker-card";
 import { RulesBanner } from "@/components/rules-banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, RefreshCw, FlaskConical } from "lucide-react";
+import { useWatcherRunner } from "@/lib/watcher-runner";
 import type { EntryNotesResponse } from "./api/entry-notes/route";
 
 type UIState =
@@ -51,6 +52,7 @@ function toTickerProps(ticker: string, raw: RawTickerState): TickerCardProps {
 export default function Dashboard() {
   const [state, setState] = useState<UIState>({ kind: "loading" });
   const [refreshing, setRefreshing] = useState(false);
+  const { simulateTrigger, start: startWatcher } = useWatcherRunner();
 
   const load = async () => {
     setRefreshing(true);
@@ -157,6 +159,44 @@ export default function Dashboard() {
         )}
 
         <RulesBanner />
+
+        {/* Dev / test helpers */}
+        <div className="space-y-2 pt-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[12px] text-[#71717a] mr-1">UI-only dry run:</span>
+            <button
+              onClick={() => simulateTrigger("SPY")}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.02] px-3 py-1 text-[12px] font-medium text-[#a1a1aa] hover:bg-sky-500/10 hover:text-sky-400 hover:border-sky-500/30 transition-colors"
+            >
+              <FlaskConical className="h-3 w-3" />
+              Simulate SPY modal
+            </button>
+            <button
+              onClick={() => simulateTrigger("QQQ")}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.02] px-3 py-1 text-[12px] font-medium text-[#a1a1aa] hover:bg-sky-500/10 hover:text-sky-400 hover:border-sky-500/30 transition-colors"
+            >
+              <FlaskConical className="h-3 w-3" />
+              Simulate QQQ modal
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[12px] text-rose-400 mr-1">⚠ Real paper order:</span>
+            <button
+              onClick={() => startWatcher("SPY", { testFire: true })}
+              className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/30 bg-rose-500/[0.06] px-3 py-1 text-[12px] font-medium text-rose-300 hover:bg-rose-500/[0.12] transition-colors"
+            >
+              <FlaskConical className="h-3 w-3" />
+              Fire SPY test trade (paper)
+            </button>
+            <button
+              onClick={() => startWatcher("QQQ", { testFire: true })}
+              className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/30 bg-rose-500/[0.06] px-3 py-1 text-[12px] font-medium text-rose-300 hover:bg-rose-500/[0.12] transition-colors"
+            >
+              <FlaskConical className="h-3 w-3" />
+              Fire QQQ test trade (paper)
+            </button>
+          </div>
+        </div>
 
         <footer className="pt-4 text-[13px] text-[#71717a]">
           <p>Path A systematic trader. Read-only dashboard — all orders placed via TWS.</p>

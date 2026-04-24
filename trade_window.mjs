@@ -99,10 +99,11 @@ function parseArgs() {
   }
 
   const testMode = args.includes('--test');
-  return { ticker, until, untilStr, testMode };
+  const testFire = args.includes('--test-fire');
+  return { ticker, until, untilStr, testMode, testFire };
 }
 
-const { ticker, until, untilStr, testMode } = parseArgs();
+const { ticker, until, untilStr, testMode, testFire } = parseArgs();
 
 // ─── Load entry_notes ────────────────────────────────────────────────────────
 function loadEntryNotes(ticker) {
@@ -411,6 +412,22 @@ async function handleTriggered() {
 async function runLoop() {
   let checkNum = 0;
 
+  // --test-fire: skip validator, immediately run the full order-placement
+  // path once. Useful to verify the end-to-end chain (YES prompt ↔ dashboard
+  // ↔ stdin ↔ order placement ↔ OCA bracket) without waiting for a real
+  // candle trigger. Exits after one attempt.
+  if (testFire) {
+    console.log(`\n🧪 TEST-FIRE mode — skipping validator, firing handleTriggered() immediately.`);
+    console.log(`   This IS a real order path — paper account, but real IBKR interaction.`);
+    try {
+      await handleTriggered();
+    } catch (e) {
+      console.log(`   test-fire error: ${e.message}`);
+    }
+    console.log(`\n   test-fire complete. Exiting.`);
+    return;
+  }
+
   console.log(`[${nowETStr()}] Initial check...`);
   try {
     const r = await validateCandleClose();
@@ -476,7 +493,7 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
 console.log(`  Loaded entry_notes (${ageHrs.toFixed(1)}h old): ${ticker} ${direction}`);
 console.log(`  Trigger A: 15m close ${direction === 'CALLS' ? '>' : '<'} ${entryPrice.toFixed(2)} with rVol ≥ ${RVOL_THRESHOLD}`);
 console.log(`  Window:    now (${nowETStr()}) → ${untilStr} SGT`);
-console.log(`  Mode:      ${testMode ? 'TEST (no order placement)' : STAGED_MODE ? 'STAGED (YES → stage in TWS → click Transmit)' : 'AUTO-TRANSMIT (YES fires immediately)'}`);
+console.log(`  Mode:      ${testFire ? '🧪 TEST-FIRE (skips validator, fires once on YES)' : testMode ? 'TEST (no order placement)' : STAGED_MODE ? 'STAGED (YES → stage in TWS → click Transmit)' : 'AUTO-TRANSMIT (YES fires immediately)'}`);
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
 (async () => {

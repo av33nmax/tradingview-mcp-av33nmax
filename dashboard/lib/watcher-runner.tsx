@@ -43,6 +43,7 @@ export type WatcherState = {
   lastCheck: LastCheck | null;
   pendingPrompt: PendingPrompt | null;
   recentLines: RecentLine[];
+  isSimulated?: boolean;
 };
 
 export type RecentLine = {
@@ -54,11 +55,14 @@ export type RecentLine = {
 
 type WatcherMap = Record<string, WatcherState>;
 
+type StartOpts = { until?: string; testFire?: boolean };
+
 type WatcherRunnerContextValue = {
   watchers: WatcherMap;
-  start: (ticker: string, untilStr?: string) => Promise<void>;
+  start: (ticker: string, opts?: StartOpts) => Promise<void>;
   stop: (ticker: string) => Promise<void>;
   confirm: (ticker: string, answer: "YES" | "no") => Promise<void>;
+  simulateTrigger: (ticker: string) => void;
 };
 
 const WatcherRunnerContext = createContext<WatcherRunnerContextValue | null>(null);
@@ -215,13 +219,15 @@ export function WatcherRunnerProvider({ children }: { children: React.ReactNode 
     };
   }, [attachStream]);
 
-  const start = useCallback(async (ticker: string, untilStr = "23:00") => {
+  const start = useCallback(async (ticker: string, opts: StartOpts = {}) => {
+    const untilStr = opts.until ?? "23:00";
+    const testFire = !!opts.testFire;
     mutate(ticker, { status: "starting" });
     try {
       const res = await fetch("/api/watcher/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ticker, until: untilStr }),
+        body: JSON.stringify({ ticker, until: untilStr, testFire }),
       });
       const json = await res.json();
       if (!json.ok) {
@@ -256,6 +262,39 @@ export function WatcherRunnerProvider({ children }: { children: React.ReactNode 
   }, [detachStream]);
 
   const confirm = useCallback(async (ticker: string, answer: "YES" | "no") => {
+    const current = watchers[ticker];
+    const isSim = !!current?.isSimulated;
+
+    // For simulated triggers, just clear the modal locally — no server call
+    if (isSim) {
+      setWatchers((prev) => {
+        const cur = prev[ticker];
+        if (!cur) return prev;
+        return {
+          ...prev,
+          [ticker]: {
+            ...cur,
+            pendingPrompt: null,
+            status: "exited",
+            exitCode: 0,
+            recentLines: [
+              ...cur.recentLines,
+              {
+                id: Date.now(),
+                type: "info",
+                text: answer === "YES"
+                  ? "✓ SIMULATED: YES confirmed (no real order placed)"
+                  : "✗ SIMULATED: aborted",
+                at: Date.now(),
+              },
+            ],
+            isSimulated: false,
+          },
+        };
+      });
+      return;
+    }
+
     try {
       await fetch(`/api/watcher/confirm/${ticker}`, {
         method: "POST",
@@ -279,11 +318,43 @@ export function WatcherRunnerProvider({ children }: { children: React.ReactNode 
     } catch (err) {
       console.warn("confirm failed", err);
     }
+  }, [watchers]);
+
+  const simulateTrigger = useCallback((ticker: string) => {
+    const fakePrompt: PendingPrompt = {
+      ticker,
+      direction: "CALLS",
+      strike: ticker === "SPY" ? 713 : 660,
+      expiry: "20260424",
+      qty: 3,
+      premiumEst: 0.89,
+      underlyingEntry: ticker === "SPY" ? 710.40 : 649.09,
+      stop: ticker === "SPY" ? 707.07 : 646.79,
+      T1: ticker === "SPY" ? 711.98 : 652.28,
+      T2: ticker === "SPY" ? 713.36 : 655.47,
+      bracket: {
+        t1: ticker === "SPY" ? 711.98 : 652.28,
+        stop: ticker === "SPY" ? 707.07 : 646.79,
+      },
+      createdAt: Date.now(),
+    };
+    setWatchers((prev) => ({
+      ...prev,
+      [ticker]: {
+        ...(prev[ticker] ?? idleState(ticker)),
+        ticker,
+        status: "pending-confirm",
+        startedAt: Date.now(),
+        untilStr: "23:00",
+        pendingPrompt: fakePrompt,
+        isSimulated: true,
+      },
+    }));
   }, []);
 
   const value = useMemo(
-    () => ({ watchers, start, stop, confirm }),
-    [watchers, start, stop, confirm],
+    () => ({ watchers, start, stop, confirm, simulateTrigger }),
+    [watchers, start, stop, confirm, simulateTrigger],
   );
 
   return <WatcherRunnerContext.Provider value={value}>{children}</WatcherRunnerContext.Provider>;

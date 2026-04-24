@@ -41,6 +41,7 @@ export function ConfirmModal() {
   // since handleTriggered awaits the prompt before returning)
   const pendingEntry = Object.values(watchers).find((w) => !!w.pendingPrompt);
   const pending: PendingPrompt | null = pendingEntry?.pendingPrompt ?? null;
+  const isSimulated = !!pendingEntry?.isSimulated;
   const open = !!pending;
 
   // Reset typed input whenever a new prompt appears
@@ -79,6 +80,13 @@ export function ConfirmModal() {
             transition={{ type: "spring", damping: 25, stiffness: 260 }}
             className="relative w-full max-w-md rounded-2xl border border-white/[0.08] bg-[#131316] shadow-[0_0_0_1px_rgba(200,169,120,0.3),0_12px_60px_rgba(0,0,0,0.6)]"
           >
+            {/* Simulation banner */}
+            {isSimulated && (
+              <div className="border-b border-sky-500/20 bg-sky-500/10 px-5 py-2 text-[13px] text-sky-300 font-medium text-center">
+                🧪 DRY RUN — no real order will be placed
+              </div>
+            )}
+
             {/* Header */}
             <div className="border-b border-white/[0.06] px-5 py-4">
               <div className="flex items-center gap-3">
@@ -87,7 +95,7 @@ export function ConfirmModal() {
                 </div>
                 <div>
                   <div className="text-base font-semibold text-[#e4e4e7]">
-                    🎯 {pending.ticker} trigger fired
+                    🎯 {pending.ticker} trigger fired{isSimulated ? " (simulated)" : ""}
                   </div>
                   <div className="text-[13px] text-[#a1a1aa] mt-0.5">
                     {pending.direction} · 0DTE · review + confirm
