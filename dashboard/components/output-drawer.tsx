@@ -23,7 +23,7 @@ function LineRow({ line }: { line: OutputLine }) {
     line.type === "stderr" ? "text-rose-300" :
     line.type === "error"  ? "text-rose-400" :
     line.type === "info"   ? "text-emerald-300" :
-                             "text-zinc-200";
+                             "text-[#e4e4e7]";
   return (
     <div className={cn("whitespace-pre-wrap break-words", toneClass)}>
       {line.text}
@@ -36,7 +36,7 @@ function StatusPill() {
   if (state.kind === "running") {
     const elapsed = Math.floor((Date.now() - state.startedAt) / 1000);
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-300 ring-1 ring-emerald-500/25">
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-300 ring-1 ring-emerald-500/20">
         <Loader2 className="h-3 w-3 animate-spin" />
         running · {elapsed}s
       </span>
@@ -50,8 +50,8 @@ function StatusPill() {
         className={cn(
           "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ring-1 ring-inset",
           ok
-            ? "bg-emerald-500/15 text-emerald-300 ring-emerald-500/25"
-            : "bg-rose-500/15 text-rose-300 ring-rose-500/25",
+            ? "bg-emerald-500/10 text-emerald-300 ring-emerald-500/20"
+            : "bg-rose-500/10 text-rose-300 ring-rose-500/20",
         )}
       >
         {ok ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
@@ -61,14 +61,14 @@ function StatusPill() {
   }
   if (state.kind === "error") {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/15 px-2 py-0.5 text-xs text-rose-300 ring-1 ring-rose-500/25">
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-2 py-0.5 text-xs text-rose-300 ring-1 ring-rose-500/20">
         <XCircle className="h-3 w-3" />
         error
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/15 px-2 py-0.5 text-xs text-zinc-400 ring-1 ring-zinc-500/25">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.05] px-2 py-0.5 text-xs text-[#a1a1aa] ring-1 ring-white/[0.08]">
       <Clock className="h-3 w-3" />
       idle
     </span>
@@ -115,21 +115,21 @@ export function OutputDrawer() {
           animate={{ y: 0 }}
           exit={{ y: "100%" }}
           transition={{ type: "spring", damping: 25, stiffness: 220 }}
-          className="fixed bottom-0 left-0 right-0 z-40 border-t border-zinc-800 bg-zinc-950/95 shadow-2xl backdrop-blur"
+          className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/[0.08] bg-[#0e0e10] shadow-[0_-12px_32px_-8px_rgba(0,0,0,0.5)] backdrop-blur"
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between gap-3 border-b border-zinc-800/60 px-3 py-2.5 md:px-4">
+          <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-3 py-2.5 md:px-4">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-zinc-800/60 text-zinc-300">
+              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-white/[0.05] text-[#a1a1aa]">
                 <Terminal className="h-4 w-4" />
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium truncate">{label}</span>
+                  <span className="text-sm font-medium text-[#e4e4e7] truncate">{label}</span>
                   <StatusPill />
                 </div>
-                <div className="text-[10px] text-muted-foreground font-mono">
+                <div className="text-[10px] text-[#71717a] font-mono">
                   {output.length} line{output.length === 1 ? "" : "s"}
                 </div>
               </div>
@@ -183,10 +183,10 @@ export function OutputDrawer() {
           {!collapsed && (
             <div
               ref={scrollRef}
-              className="h-[40dvh] max-h-[40dvh] md:h-72 md:max-h-72 overflow-y-auto overscroll-contain px-3 py-3 md:px-4 font-mono text-[12px] leading-relaxed"
+              className="h-[40dvh] max-h-[40dvh] md:h-72 md:max-h-72 overflow-y-auto overscroll-contain bg-[#09090b] px-3 py-3 md:px-4 font-mono text-[12px] leading-relaxed"
             >
               {output.length === 0 ? (
-                <div className="flex h-full items-center justify-center text-muted-foreground">
+                <div className="flex h-full items-center justify-center text-[#71717a]">
                   no output yet
                 </div>
               ) : (

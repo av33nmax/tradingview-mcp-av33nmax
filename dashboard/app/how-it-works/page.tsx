@@ -26,12 +26,12 @@ import {
 function SectionHeading({ icon, children, sub }: { icon: React.ReactNode; children: React.ReactNode; sub?: string }) {
   return (
     <div className="flex items-start gap-3">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-zinc-800/60 text-zinc-300">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white/[0.05] text-[#e4e4e7]">
         {icon}
       </div>
       <div>
-        <h2 className="text-xl font-semibold tracking-tight">{children}</h2>
-        {sub && <p className="mt-0.5 text-sm text-muted-foreground">{sub}</p>}
+        <h2 className="text-2xl font-semibold tracking-tight text-[#e4e4e7]">{children}</h2>
+        {sub && <p className="mt-0.5 text-[15px] text-[#a1a1aa]">{sub}</p>}
       </div>
     </div>
   );
@@ -49,17 +49,17 @@ function ComponentCard({
   description: React.ReactNode;
 }) {
   return (
-    <Card className="border-zinc-800/60">
+    <Card className="border-white/[0.06] bg-[#131316] shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
       <CardHeader className="pb-2">
         <div className="flex items-center gap-2">
           <div className="text-emerald-400">{icon}</div>
           <div className="flex flex-col">
             <div className="font-semibold tracking-tight">{name}</div>
-            <code className="font-mono text-xs text-muted-foreground">{file}</code>
+            <code className="font-mono text-[13px] text-[#a1a1aa]">{file}</code>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="pt-0 text-sm text-zinc-300 leading-relaxed">
+      <CardContent className="pt-0 text-[15px] text-[#e4e4e7] leading-relaxed">
         {description}
       </CardContent>
     </Card>
@@ -79,16 +79,16 @@ function TimelineStep({
 }) {
   return (
     <div className="relative pl-8">
-      <div className="absolute left-0 top-1 h-3 w-3 rounded-full bg-emerald-500/80 ring-4 ring-emerald-500/10" />
-      <div className="absolute left-[5px] top-4 h-[calc(100%-1rem)] w-px bg-zinc-800" />
+      <div className="absolute left-0 top-1 h-3 w-3 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15" />
+      <div className="absolute left-[5px] top-4 h-[calc(100%-1rem)] w-px bg-white/[0.08]" />
       <div className="flex flex-col gap-1 pb-6">
         <div className="flex items-baseline gap-3">
-          <span className="font-mono text-xs font-medium text-emerald-400">{time}</span>
+          <span className="font-mono text-[13px] font-semibold text-emerald-400">{time}</span>
           <span className="font-medium text-foreground">{title}</span>
         </div>
-        <p className="text-sm text-muted-foreground leading-relaxed">{body}</p>
+        <p className="text-[15px] text-[#a1a1aa] leading-relaxed">{body}</p>
         {command && (
-          <code className="mt-1 inline-block rounded border border-zinc-800 bg-zinc-950/80 px-2.5 py-1 font-mono text-xs text-zinc-300 w-fit">
+          <code className="mt-1 inline-block rounded-md border border-white/[0.06] bg-[#09090b] px-2.5 py-1 font-mono text-[13px] text-[#e4e4e7] w-fit">
             {command}
           </code>
         )}
@@ -99,9 +99,9 @@ function TimelineStep({
 
 function RuleRow({ rule, prevents }: { rule: string; prevents: string }) {
   return (
-    <tr className="border-b border-zinc-800/60 last:border-0">
-      <td className="py-3 pr-4 align-top text-sm text-foreground">{rule}</td>
-      <td className="py-3 text-sm text-muted-foreground">{prevents}</td>
+    <tr className="border-b border-white/[0.06] bg-[#131316] shadow-[0_1px_2px_rgba(0,0,0,0.3)] last:border-0">
+      <td className="py-3.5 pr-4 align-top text-[15px] text-[#e4e4e7] font-medium">{rule}</td>
+      <td className="py-3.5 text-[15px] text-[#a1a1aa]">{prevents}</td>
     </tr>
   );
 }
@@ -112,32 +112,33 @@ function RoadmapItem({ done, label }: { done: boolean; label: string }) {
       {done ? (
         <CircleCheck className="h-4 w-4 text-emerald-400" />
       ) : (
-        <Clock className="h-4 w-4 text-zinc-500" />
+        <Clock className="h-4 w-4 text-[#71717a]" />
       )}
-      <span className={done ? "text-foreground" : "text-muted-foreground"}>{label}</span>
+      <span className={done ? "text-foreground" : "text-[#a1a1aa]"}>{label}</span>
     </div>
   );
 }
 
 export default function HowItWorks() {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-[#09090b]">
       <AppHeader />
 
-      <main className="mx-auto max-w-4xl px-4 py-6 space-y-8 md:px-6 md:py-10 md:space-y-12">
+      <main className="mx-auto max-w-4xl px-4 py-8 space-y-10 md:px-6 md:py-16 md:space-y-16">
         {/* Hero */}
-        <section className="space-y-3">
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/40 px-3 py-1 text-xs text-zinc-400">
+        <section className="space-y-4 text-center md:text-left">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-[#131316] px-3 py-1.5 text-[13px] text-[#a1a1aa]">
             <Activity className="h-3 w-3 text-emerald-400" /> Path A · systematic trader
           </div>
-          <h1 className="text-3xl font-semibold tracking-tight">
-            How Cro<span className="text-emerald-400">$$</span>hair ZeroOne works
+          <h1 className="text-4xl md:text-6xl font-semibold tracking-tight text-[#e4e4e7] leading-[1.05]">
+            How Cro<span className="text-emerald-400">$$</span>hair
+            <br />
+            ZeroOne works.
           </h1>
-          <p className="text-base text-muted-foreground leading-relaxed max-w-2xl">
+          <p className="text-lg md:text-xl text-[#a1a1aa] leading-relaxed max-w-2xl mx-auto md:mx-0">
             0DTE retail options traders lose money not because they can&apos;t read charts, but
-            because execution discipline breaks under pressure. Scalps morph into held losers.
-            Rules bend when &quot;this setup is different.&quot; Commission drag compounds. This system
-            makes the discipline mechanical so the trader doesn&apos;t have to be heroic in the moment.
+            because execution discipline breaks under pressure. This system makes the discipline
+            mechanical — so you don&apos;t have to be heroic in the moment.
           </p>
         </section>
 
@@ -185,7 +186,7 @@ export default function HowItWorks() {
                   The one-command morning routine. Runs the analysis, cleans up yesterday&apos;s
                   drawings, draws fresh deep S/R + FVG zones, annotates Trigger A (orange) and
                   Trigger B (purple) lines, and writes{" "}
-                  <code className="font-mono text-xs rounded bg-zinc-800 px-1">latest_entry_notes.json</code>.
+                  <code className="font-mono text-xs rounded bg-white/[0.05] px-1">latest_entry_notes.json</code>.
                 </>
               }
             />
@@ -219,7 +220,7 @@ export default function HowItWorks() {
               file="ibkr_orders.mjs"
               description={
                 <>
-                  Wraps <code className="font-mono text-xs rounded bg-zinc-800 px-1">@stoqey/ib</code>{" "}
+                  Wraps <code className="font-mono text-xs rounded bg-white/[0.05] px-1">@stoqey/ib</code>{" "}
                   calls — contract resolution, option chain params, strike picker (premium $0.50-$0.90, nearest-ATM),
                   order placement. One source of truth for anything that talks to IBKR.
                 </>
@@ -234,7 +235,7 @@ export default function HowItWorks() {
                   Persistent flag file keyed to the ET trading day. Once you&apos;ve placed a trade
                   on a ticker, further attempts are blocked with a clear message. Auto-resets at
                   ET midnight. Manual override requires{" "}
-                  <code className="font-mono text-xs rounded bg-zinc-800 px-1">rm traded_today.json</code>.
+                  <code className="font-mono text-xs rounded bg-white/[0.05] px-1">rm traded_today.json</code>.
                 </>
               }
             />
@@ -250,7 +251,7 @@ export default function HowItWorks() {
             Daily workflow
           </SectionHeading>
 
-          <Card className="border-zinc-800/60">
+          <Card className="border-white/[0.06] bg-[#131316] shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
             <CardContent className="py-6">
               <TimelineStep
                 time="8:30 PM SGT"
@@ -308,13 +309,13 @@ export default function HowItWorks() {
             Discipline system
           </SectionHeading>
 
-          <Card className="border-zinc-800/60">
+          <Card className="border-white/[0.06] bg-[#131316] shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
             <CardContent className="py-2">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-zinc-800">
-                    <th className="py-3 pr-4 text-left text-xs uppercase tracking-wider text-muted-foreground">Rule</th>
-                    <th className="py-3 text-left text-xs uppercase tracking-wider text-muted-foreground">Prevents</th>
+                  <tr className="border-b border-white/[0.06]">
+                    <th className="py-3 pr-4 text-left text-[12px] font-semibold uppercase tracking-wider text-[#a1a1aa]">Rule</th>
+                    <th className="py-3 text-left text-[12px] font-semibold uppercase tracking-wider text-[#a1a1aa]">Prevents</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -341,40 +342,40 @@ export default function HowItWorks() {
             Tech stack
           </SectionHeading>
 
-          <Card className="border-zinc-800/60">
+          <Card className="border-white/[0.06] bg-[#131316] shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
             <CardContent className="py-5">
               <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 <div className="flex items-baseline justify-between gap-4">
-                  <dt className="text-muted-foreground">Backend / scripts</dt>
-                  <dd className="text-right font-mono text-xs">Node.js 20+</dd>
+                  <dt className="text-[#a1a1aa]">Backend / scripts</dt>
+                  <dd className="text-right font-mono text-[13px] text-[#e4e4e7]">Node.js 20+</dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-4">
-                  <dt className="text-muted-foreground">IBKR API</dt>
-                  <dd className="text-right font-mono text-xs">@stoqey/ib</dd>
+                  <dt className="text-[#a1a1aa]">IBKR API</dt>
+                  <dd className="text-right font-mono text-[13px] text-[#e4e4e7]">@stoqey/ib</dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-4">
-                  <dt className="text-muted-foreground">TradingView automation</dt>
-                  <dd className="text-right font-mono text-xs">Chrome DevTools Protocol</dd>
+                  <dt className="text-[#a1a1aa]">TradingView automation</dt>
+                  <dd className="text-right font-mono text-[13px] text-[#e4e4e7]">Chrome DevTools Protocol</dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-4">
-                  <dt className="text-muted-foreground">Broker hosting</dt>
-                  <dd className="text-right font-mono text-xs">TWS paper/live on LAN</dd>
+                  <dt className="text-[#a1a1aa]">Broker hosting</dt>
+                  <dd className="text-right font-mono text-[13px] text-[#e4e4e7]">TWS paper/live on LAN</dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-4">
-                  <dt className="text-muted-foreground">Dashboard</dt>
-                  <dd className="text-right font-mono text-xs">Next.js 16 · React 19</dd>
+                  <dt className="text-[#a1a1aa]">Dashboard</dt>
+                  <dd className="text-right font-mono text-[13px] text-[#e4e4e7]">Next.js 16 · React 19</dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-4">
-                  <dt className="text-muted-foreground">Styling</dt>
-                  <dd className="text-right font-mono text-xs">Tailwind + shadcn/ui</dd>
+                  <dt className="text-[#a1a1aa]">Styling</dt>
+                  <dd className="text-right font-mono text-[13px] text-[#e4e4e7]">Tailwind + shadcn/ui</dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-4">
-                  <dt className="text-muted-foreground">Notifications</dt>
-                  <dd className="text-right font-mono text-xs">macOS osascript</dd>
+                  <dt className="text-[#a1a1aa]">Notifications</dt>
+                  <dd className="text-right font-mono text-[13px] text-[#e4e4e7]">macOS osascript</dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-4">
-                  <dt className="text-muted-foreground">First-time setup</dt>
-                  <dd className="text-right font-mono text-xs">Paper account</dd>
+                  <dt className="text-[#a1a1aa]">First-time setup</dt>
+                  <dd className="text-right font-mono text-[13px] text-[#e4e4e7]">Paper account</dd>
                 </div>
               </dl>
             </CardContent>
@@ -390,7 +391,7 @@ export default function HowItWorks() {
             Roadmap
           </SectionHeading>
 
-          <Card className="border-zinc-800/60">
+          <Card className="border-white/[0.06] bg-[#131316] shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
             <CardContent className="py-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 gap-x-6">
                 <RoadmapItem done label="Pre-market analysis + chart annotations" />
@@ -419,28 +420,28 @@ export default function HowItWorks() {
             Design philosophy
           </SectionHeading>
 
-          <Card className="border-zinc-800/60">
-            <CardContent className="py-6 space-y-4 text-sm leading-relaxed text-zinc-300">
+          <Card className="border-white/[0.06] bg-[#131316] shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
+            <CardContent className="py-6 space-y-4 text-[15px] leading-relaxed text-[#e4e4e7]">
               <p>
                 <span className="font-medium text-emerald-400">Process over outcome.</span>{" "}
                 A well-executed loss is a better trade than a rule-breaking win. The rule-breaking win
                 teaches you that rules are optional, which compounds until it blows up the account.
                 This tool enforces process first, outcome second.
               </p>
-              <Separator className="bg-zinc-800/60" />
+              <Separator className="bg-white/[0.06]" />
               <p>
                 <span className="font-medium text-emerald-400">Friction where friction helps.</span>{" "}
                 The YES prompt, the TWS Transmit click, the one-trade-per-day flag — each is a
                 deliberate bump in the road. In the moment they feel annoying. In aggregate they are
                 what separates a trader from a gambler.
               </p>
-              <Separator className="bg-zinc-800/60" />
+              <Separator className="bg-white/[0.06]" />
               <p>
                 <span className="font-medium text-emerald-400">Paper first, always.</span>{" "}
                 Every script ships and ages on paper before ever touching live money. Real-money
                 trading is tested, not speculative.
               </p>
-              <Separator className="bg-zinc-800/60" />
+              <Separator className="bg-white/[0.06]" />
               <p>
                 <span className="font-medium text-emerald-400">Human in the loop.</span>{" "}
                 No fully autonomous order submission. The script watches; the human decides. The
@@ -451,7 +452,7 @@ export default function HowItWorks() {
         </section>
 
         {/* Footer */}
-        <section className="pt-4 text-xs text-muted-foreground">
+        <section className="pt-4 text-[13px] text-[#a1a1aa]">
           <div className="flex items-center gap-2">
             <TriangleAlert className="h-3.5 w-3.5 text-amber-500" />
             <p>

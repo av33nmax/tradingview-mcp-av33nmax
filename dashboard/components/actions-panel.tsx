@@ -1,7 +1,6 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { useCommandRunner } from "@/lib/command-runner";
 import { cn } from "@/lib/utils";
 import {
@@ -49,15 +48,18 @@ const ACTIONS: Action[] = [
 const accentStyles = {
   emerald: {
     iconBg: "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20",
-    hover: "hover:border-emerald-500/40 hover:bg-emerald-500/5",
+    hover: "hover:border-emerald-500/25 hover:bg-emerald-500/[0.04]",
+    active: "border-emerald-500/30 bg-emerald-500/[0.06]",
   },
   sky: {
     iconBg: "bg-sky-500/10 text-sky-400 ring-sky-500/20",
-    hover: "hover:border-sky-500/40 hover:bg-sky-500/5",
+    hover: "hover:border-sky-500/25 hover:bg-sky-500/[0.04]",
+    active: "border-sky-500/30 bg-sky-500/[0.06]",
   },
   amber: {
     iconBg: "bg-amber-500/10 text-amber-400 ring-amber-500/20",
-    hover: "hover:border-amber-500/40 hover:bg-amber-500/5",
+    hover: "hover:border-amber-500/25 hover:bg-amber-500/[0.04]",
+    active: "border-amber-500/30 bg-amber-500/[0.06]",
   },
 };
 
@@ -75,7 +77,7 @@ function statusIcon(state: ReturnType<typeof useCommandRunner>["state"], command
   if (state.kind === "error" && state.command === command) {
     return <XCircle className="h-3.5 w-3.5 text-rose-400" />;
   }
-  return <Play className="h-3.5 w-3.5 opacity-50 group-hover:opacity-100" />;
+  return <Play className="h-3.5 w-3.5 text-[#71717a] group-hover:text-[#e4e4e7]" />;
 }
 
 export function ActionsPanel() {
@@ -83,12 +85,12 @@ export function ActionsPanel() {
   const anyRunning = state.kind === "running";
 
   return (
-    <Card className="border-zinc-800/60 bg-zinc-950/40">
+    <Card className="rounded-2xl border border-white/[0.06] bg-[#131316] shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
       <CardContent className="py-5">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-4 flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold tracking-tight">Actions</h3>
-            <p className="text-xs text-muted-foreground">
+            <h3 className="text-base font-semibold tracking-tight text-[#e4e4e7]">Actions</h3>
+            <p className="text-sm text-[#a1a1aa] mt-0.5">
               Run the daily routine commands without touching a terminal
             </p>
           </div>
@@ -103,16 +105,16 @@ export function ActionsPanel() {
                 onClick={() => run(a.command)}
                 disabled={anyRunning}
                 className={cn(
-                  "group relative flex flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 text-left transition-all min-h-[76px]",
+                  "group relative flex flex-col gap-2 rounded-xl border border-white/[0.06] bg-[#1a1a1e] p-4 text-left transition-all min-h-[76px]",
                   s.hover,
                   anyRunning && !isThisRunning && "opacity-40 cursor-not-allowed",
-                  isThisRunning && "border-emerald-500/40 bg-emerald-500/5",
+                  isThisRunning && s.active,
                 )}
               >
                 <div className="flex items-center justify-between">
                   <div
                     className={cn(
-                      "flex h-8 w-8 items-center justify-center rounded-md ring-1 ring-inset",
+                      "flex h-9 w-9 items-center justify-center rounded-lg ring-1 ring-inset",
                       s.iconBg,
                     )}
                   >
@@ -121,8 +123,8 @@ export function ActionsPanel() {
                   {statusIcon(state, a.command)}
                 </div>
                 <div>
-                  <div className="text-sm font-medium leading-tight">{a.label}</div>
-                  <div className="mt-0.5 text-xs text-muted-foreground leading-snug">
+                  <div className="text-[15px] font-semibold leading-tight text-[#e4e4e7]">{a.label}</div>
+                  <div className="mt-1 text-[13px] text-[#a1a1aa] leading-snug">
                     {a.description}
                   </div>
                 </div>

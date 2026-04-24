@@ -11,15 +11,15 @@ const RULES = [
 
 export function RulesBanner() {
   return (
-    <Card className="border-zinc-800/60 bg-zinc-900/30">
-      <CardContent className="py-3">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-          <span className="text-xs font-medium uppercase tracking-wider text-zinc-400">
+    <Card className="rounded-2xl border border-white/[0.06] bg-[#131316] shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
+      <CardContent className="py-5">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          <span className="text-[13px] font-semibold uppercase tracking-wider text-[#71717a]">
             Rules active
           </span>
           {RULES.map((r) => (
-            <div key={r} className="flex items-center gap-1.5 text-xs text-zinc-300">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+            <div key={r} className="flex items-center gap-2 text-sm text-[#e4e4e7]">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
               <span>{r}</span>
             </div>
           ))}

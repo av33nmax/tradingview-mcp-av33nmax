@@ -88,7 +88,7 @@ export default function Dashboard() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-[#09090b]">
       <AppHeader />
 
       <main className="mx-auto max-w-6xl px-4 py-6 space-y-5 md:px-6 md:py-8 md:space-y-6">
@@ -96,19 +96,25 @@ export default function Dashboard() {
 
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold tracking-tight">Today&apos;s setup</h2>
+            <h2 className="text-2xl md:text-3xl font-semibold tracking-tight text-[#e4e4e7]">Today&apos;s setup</h2>
             {state.kind === "ok" && (
-              <p className="mt-0.5 text-xs text-muted-foreground">
+              <p className="mt-1.5 text-sm text-[#a1a1aa]">
                 Generated {state.ageMinutes}m ago
                 {state.isStale && (
-                  <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-300 ring-1 ring-amber-500/25">
+                  <span className="ml-2 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[13px] text-amber-300 ring-1 ring-amber-500/20">
                     stale — re-run premarket_setup.mjs
                   </span>
                 )}
               </p>
             )}
           </div>
-          <Button variant="outline" size="sm" onClick={load} disabled={refreshing}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={load}
+            disabled={refreshing}
+            className="rounded-full border-white/[0.08] bg-[#131316] hover:bg-white/[0.05] text-[#e4e4e7]"
+          >
             <RefreshCw className={refreshing ? "animate-spin" : ""} />
             Refresh
           </Button>
@@ -122,10 +128,10 @@ export default function Dashboard() {
         )}
 
         {state.kind === "error" && (
-          <div className="flex items-start gap-3 rounded-lg border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">
+          <div className="flex items-start gap-3 rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-300">
             <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
             <div>
-              <div className="font-medium">Unable to load entry notes</div>
+              <div className="font-semibold">Unable to load entry notes</div>
               <div className="mt-1 text-xs text-rose-300/80">{state.message}</div>
               <div className="mt-2 font-mono text-xs text-rose-300/60">
                 $ node premarket_setup.mjs
@@ -137,7 +143,7 @@ export default function Dashboard() {
         {state.kind === "ok" && (
           <>
             {Object.keys(state.tickers).length === 0 ? (
-              <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/30 p-8 text-center text-sm text-muted-foreground">
+              <div className="rounded-2xl border border-white/[0.06] bg-[#131316] p-8 text-center text-sm text-[#a1a1aa]">
                 No tickers in latest_entry_notes.json
               </div>
             ) : (
@@ -152,7 +158,7 @@ export default function Dashboard() {
 
         <RulesBanner />
 
-        <footer className="pt-4 text-xs text-muted-foreground">
+        <footer className="pt-4 text-[13px] text-[#71717a]">
           <p>Path A systematic trader. Read-only dashboard — all orders placed via TWS.</p>
         </footer>
       </main>

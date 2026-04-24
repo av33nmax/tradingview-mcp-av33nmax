@@ -16,28 +16,27 @@ export function AppHeader() {
 
   return (
     <header
-      className="border-b border-zinc-800/80 bg-zinc-950/70 backdrop-blur sticky top-0 z-30"
+      className="sticky top-0 z-30 border-b border-white/[0.06] bg-[#09090b]/85 backdrop-blur-xl"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
       <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between md:gap-6 md:px-6 md:py-4">
-        {/* Logo + mobile clock row */}
         <div className="flex items-center justify-between gap-4 md:gap-6">
           <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-rose-500 text-white">
-              <Crosshair className="h-5 w-5" />
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#c8a978] to-[#8b5a2b] text-[#09090b] shadow-[0_0_0_1px_rgba(200,169,120,0.3),0_2px_8px_rgba(200,169,120,0.2)]">
+              <Crosshair className="h-5 w-5" strokeWidth={2.25} />
             </div>
             <div className="flex flex-col min-w-0">
-              <h1 className="text-base md:text-lg font-semibold tracking-tight leading-none truncate">
-                Cro<span className="text-emerald-400">$$</span>hair ZeroOne
+              <h1 className="text-base md:text-lg font-semibold tracking-tight leading-none truncate text-[#e4e4e7]">
+                Cro<span className="text-[#c8a978]">$$</span>hair ZeroOne
               </h1>
-              <p className="hidden md:block text-xs text-muted-foreground mt-0.5">
+              <p className="hidden md:block text-[13px] text-[#71717a] mt-1">
                 Systematic 0DTE trader&apos;s co-pilot
               </p>
             </div>
           </Link>
 
           {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-1 border-l border-zinc-800 pl-6">
+          <nav className="hidden md:flex items-center gap-1 md:ml-4 md:border-l md:border-white/[0.06] md:pl-6">
             {NAV.map((item) => {
               const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
               return (
@@ -47,8 +46,8 @@ export function AppHeader() {
                   className={cn(
                     "px-3 py-1.5 rounded-md text-sm transition-colors",
                     active
-                      ? "bg-zinc-800/70 text-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-zinc-800/40",
+                      ? "bg-white/[0.06] text-[#e4e4e7] font-medium"
+                      : "text-[#a1a1aa] hover:text-[#e4e4e7] hover:bg-white/[0.04]",
                   )}
                 >
                   {item.label}
@@ -57,20 +56,17 @@ export function AppHeader() {
             })}
           </nav>
 
-          {/* Mobile-only clock on the right */}
           <div className="md:hidden shrink-0">
             <SessionClock compact />
           </div>
         </div>
 
-        {/* Desktop clock */}
         <div className="hidden md:block">
           <SessionClock />
         </div>
       </div>
 
-      {/* Mobile nav — bottom row */}
-      <nav className="md:hidden flex items-center gap-1 border-t border-zinc-800 px-4 py-2">
+      <nav className="md:hidden flex items-center gap-1 border-t border-white/[0.06] px-4 py-2">
         {NAV.map((item) => {
           const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           return (
@@ -80,8 +76,8 @@ export function AppHeader() {
               className={cn(
                 "min-h-[44px] flex items-center px-3 py-2 rounded-md text-sm transition-colors",
                 active
-                  ? "bg-zinc-800/70 text-foreground"
-                  : "text-muted-foreground active:bg-zinc-800/40",
+                  ? "bg-white/[0.06] text-[#e4e4e7] font-medium"
+                  : "text-[#a1a1aa] active:bg-white/[0.04]",
               )}
             >
               {item.label}
