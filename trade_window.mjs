@@ -387,8 +387,13 @@ async function handleTriggered() {
   });
 
   if (!STAGED_MODE) {
+    const live = IBKR_CONFIG.port === 7496;
     console.log(`\n⚠ AUTO-TRANSMIT mode — typing YES will submit the order to the market immediately.`);
-    console.log(`  (paper account ${IBKR_CONFIG.port} — no real money at risk)`);
+    if (live) {
+      console.log(`  🔴 LIVE account (port ${IBKR_CONFIG.port}) — REAL MONEY at risk`);
+    } else {
+      console.log(`  📋 paper account (port ${IBKR_CONFIG.port}) — no real money at risk`);
+    }
   }
 
   // Emit structured prompt marker so the dashboard can show a confirm modal.
