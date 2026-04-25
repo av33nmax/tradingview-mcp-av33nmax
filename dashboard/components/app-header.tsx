@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SessionClock } from "@/components/session-clock";
+import { ModeBadge } from "@/components/mode-badge";
 import { Crosshair } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -26,9 +27,12 @@ export function AppHeader() {
               <Crosshair className="h-5 w-5" strokeWidth={2.25} />
             </div>
             <div className="flex flex-col min-w-0">
-              <h1 className="text-base md:text-lg font-semibold tracking-tight leading-none truncate text-[#e4e4e7]">
-                Cro<span className="text-[#c8a978]">$$</span>hair ZeroOne
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-base md:text-lg font-semibold tracking-tight leading-none truncate text-[#e4e4e7]">
+                  Cro<span className="text-[#c8a978]">$$</span>hair ZeroOne
+                </h1>
+                <ModeBadge />
+              </div>
               <p className="hidden md:block text-[13px] text-[#71717a] mt-1">
                 Systematic 0DTE trader&apos;s co-pilot
               </p>

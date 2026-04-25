@@ -222,7 +222,12 @@ export function printOrderSpec({
   if (exitSpec) {
     console.log(`  Exit plan:     stop ${exitSpec.stop?.toFixed(2) ?? 'N/A'}  ·  T1 ${exitSpec.T1?.toFixed(2) ?? 'N/A'}  ·  T2 ${exitSpec.T2?.toFixed(2) ?? 'N/A'}`);
   }
-  console.log(`  Account:       IBKR paper  (port ${port})`);
+  const isLivePort = port === 7496;
+  if (isLivePort) {
+    console.log(`  Account:       🔴 IBKR LIVE  (port ${port}) — REAL MONEY`);
+  } else {
+    console.log(`  Account:       📋 IBKR paper  (port ${port})`);
+  }
   console.log(`════════════════════════════════════════════════════════════════`);
 }
 

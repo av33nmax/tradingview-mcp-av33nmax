@@ -4,7 +4,7 @@
  * NO orders placed.
  */
 import { IBApi, EventName } from '@stoqey/ib';
-import { IBKR_CONFIG, CLIENT_IDS, isInfoCode } from './ibkr_config.mjs';
+import { IBKR_CONFIG, CLIENT_IDS, isInfoCode, modeLabel, isLive } from './ibkr_config.mjs';
 
 const { host: HOST, port: PORT } = IBKR_CONFIG;
 const CLIENT_ID = CLIENT_IDS.test_connect;
@@ -21,7 +21,8 @@ let timeout = setTimeout(() => {
 }, 15000);
 
 ib.on(EventName.connected, () => {
-  console.log(`✅ connected to TWS at ${HOST}:${PORT}  (clientId=${CLIENT_ID})`);
+  const tag = isLive() ? '🔴 LIVE' : '📋 PAPER';
+  console.log(`✅ connected to TWS at ${HOST}:${PORT}  (clientId=${CLIENT_ID})  ${tag} mode`);
   console.log('   requesting account summary...');
   ib.reqAccountSummary(REQ_ACCOUNT, 'All', 'NetLiquidation,AvailableFunds,BuyingPower,TotalCashValue,GrossPositionValue');
 });
