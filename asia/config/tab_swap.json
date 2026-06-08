@@ -1,0 +1,10 @@
+{
+  "_comment": "Tab-reuse swap config — used by both asia/scripts/premarket_asia.mjs (flips US→HK at the start of an Asia session) and root premarket_setup.mjs (flips HK→US at the start of a US session). The TradingView Plus plan limits the number of tabs; this script reuses 3 US-equity tab slots for HK single-stock options when running the Asia session, and flips them back for US. Each pair holds either side but not both at any given time.",
+  "pairs": [
+    { "us": "AAPL", "asia": "9988", "label_us": "Apple",  "label_asia": "Alibaba" },
+    { "us": "AMZN", "asia": "1810", "label_us": "Amazon", "label_asia": "Xiaomi"  },
+    { "us": "NVDA", "asia": "700",  "label_us": "Nvidia", "label_asia": "Tencent" }
+  ],
+  "us_prefix": "BATS",
+  "asia_prefix": "HKEX"
+}

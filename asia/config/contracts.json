@@ -1,0 +1,119 @@
+{
+  "$schema": "./contracts.schema.json",
+  "_comment": "Asia tradeable instruments + confluence references. Primary = 2 HK index futures (MHI, MTW) + 3 most-liquid HK single-stock options (Tencent, Alibaba, Xiaomi). Index futures for broad/sector exposure; single stocks for daily-liquid name-specific plays. Reference = independent signals (never traded).",
+  "_mental_model": {
+    "us_analog": {
+      "trade": "SPY (HSI), AAPL (Tencent), AMZN (Alibaba), AAPL+TSLA blend (Xiaomi)",
+      "correlate": "VIX, DXY, ES (overnight)"
+    },
+    "hk_equivalent": {
+      "trade": "HSI (index options) + Tencent (700), Alibaba (9988), Xiaomi (1810) (single stocks)",
+      "correlate": "A50, CSI300, VHSI, KWEB (most important for single-stock china tech overnight), SPX"
+    },
+    "_dropped_2026-05-18": "MHI (Mini-HSI options): only monthly expiries at IBKR, no weeklies — replaced by HSI for weekly cadence. MTW (Mini-HSTECH options): does not exist as a HK product at IBKR ('MTW' globally resolves to Manitowoc Company NYSE stock). HSTECH exposure now covered by single-stock basket Tencent+Alibaba+Xiaomi (~17% of HSTECH weight)."
+  },
+
+  "primary": {
+    "_comment": "TRADE AND ANALYZE on these. HSI for broad index exposure + 3 single-stock options chains for name-specific plays. Add a new instrument by dropping an entry here matching this schema — scripts and dashboard auto-iterate.",
+
+    "HSI": {
+      "name": "Hang Seng Index Options",
+      "kind": "index_options",
+      "tracks_index": "Hang Seng Index (HSI)",
+      "exchange": "HKFE",
+      "currency": "HKD",
+      "multiplier": 50,
+      "tick_size": 1,
+      "tradingview_search": "HSI",
+      "ibkr_symbol_root": "HSI",
+      "us_analog": "SPY",
+      "color_accent": "sky",
+      "default_trail_amount": 5.0,
+      "notes": "HK broad index options. HK$50 per index point (5x Mini-HSI). Weekly Friday expiries + monthly cycle — verified 2026-05-18 via TWS contract search (May 22 Fri / May 28 / May 29 Fri / monthlies). OPT on HSI INDEX (NOT FOP on MHI futures — that was the wrong path tried earlier). Worst-case trail loss at default 5.0 HKD × 50 mult = 250 HKD/contract (~$32 USD)."
+    },
+
+    "TENCENT": {
+      "name": "Tencent Holdings",
+      "kind": "single_stock",
+      "ticker": "700.HK",
+      "exchange": "HKEX",
+      "currency": "HKD",
+      "multiplier": 100,
+      "tick_size": 0.2,
+      "tradingview_search": "700",
+      "ibkr_symbol_root": "700",
+      "us_analog": "AAPL",
+      "color_accent": "violet",
+      "default_trail_amount": 0.60,
+      "notes": "Most liquid HK single-stock options chain (AAPL-tier). ~10% weight in HSTECH. Diversified business: gaming + WeChat + payments + cloud + AI investments. Weeklies trade Wednesdays."
+    },
+
+    "ALIBABA": {
+      "name": "Alibaba Group",
+      "kind": "single_stock",
+      "ticker": "9988.HK",
+      "exchange": "HKEX",
+      "currency": "HKD",
+      "multiplier": 500,
+      "tradingClass": "ALB",
+      "tick_size": 0.05,
+      "tradingview_search": "9988",
+      "ibkr_symbol_root": "9988",
+      "us_analog": "AMZN",
+      "color_accent": "amber",
+      "default_trail_amount": 0.10,
+      "notes": "2nd most liquid HK options chain. E-commerce + cloud + AI focus. Higher beta than Tencent (~1.5). Frequently diverges from Tencent — when they split, that's a real signal. Options trade under tradingClass=ALB with ×500 multiplier (verified 2026-05-18) — without explicit tradingClass, reqContractDetails returns 0 results."
+    },
+
+    "XIAOMI": {
+      "name": "Xiaomi Corporation",
+      "kind": "single_stock",
+      "ticker": "1810.HK",
+      "exchange": "HKEX",
+      "currency": "HKD",
+      "multiplier": 1000,
+      "tradingClass": "MIU",
+      "tick_size": 0.02,
+      "tradingview_search": "1810",
+      "ibkr_symbol_root": "1810",
+      "us_analog": "AAPL + TSLA blend",
+      "color_accent": "emerald",
+      "default_trail_amount": 0.05,
+      "notes": "Smartphones + IoT + EV (SU7). ~5% weight in HSTECH. Different driver mix than Tencent/Alibaba. Options trade under tradingClass=MIU with ×1000 multiplier (verified 2026-05-18) — larger multiplier than Tencent/Alibaba reflects Xiaomi's lower share price (~30 HKD vs 130-460), so contract notional stays in a comparable range."
+    }
+  },
+
+  "reference": {
+    "_comment": "CONFLUENCE / GATE signals — read these to gate or confirm setups. Independent of the primary instruments. Never traded. KWEB is the most important overnight tell for China-tech single-stock plays.",
+
+    "A50": {
+      "name": "China A50 Index Futures",
+      "tradingview_symbol": "SGX:CN1!",
+      "purpose": "HK direction lead via mainland-exposed Singapore futures",
+      "us_analog": "ES (futures handover lead)"
+    },
+    "CSI300": {
+      "name": "CSI 300 Index",
+      "tradingview_symbol": "SSE:000300",
+      "purpose": "Mainland China leading indicator. Capital-controlled, different flow."
+    },
+    "VHSI": {
+      "name": "HSI Volatility Index",
+      "tradingview_symbol": "HSI:VHSI",
+      "purpose": "Vol regime gate (skip if >35 or <15). Even with single-stock trades, HSI vol regime drives single-name vol too.",
+      "us_analog": "VIX"
+    },
+    "KWEB": {
+      "name": "KraneShares CSI China Internet ETF (US-listed)",
+      "tradingview_symbol": "AMEX:KWEB",
+      "purpose": "Overnight US-session handover tell. Tencent/Alibaba ADRs are major KWEB holdings — when KWEB closes strong/weak in US session, it telegraphs HK open direction. MOST IMPORTANT reference for this playbook.",
+      "us_analog": "QQQ overnight (for tech-specific overnight handover)"
+    },
+    "SPX": {
+      "name": "S&P 500 Index (cash)",
+      "tradingview_symbol": "SP:SPX",
+      "purpose": "Broad global risk handover. Sets tone going into HK open.",
+      "us_analog": "self"
+    }
+  }
+}

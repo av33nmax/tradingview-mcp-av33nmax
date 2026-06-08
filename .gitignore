@@ -1,0 +1,23 @@
+node_modules/
+screenshots/
+scripts/current.pine
+temp_*
+*.log
+discovery-log.json
+latest_entry_notes.json
+latest_entry_notes.prev.json
+latest_entry_notes.bad-*.json
+latest_entry_notes.json.tmp
+traded_today.json
+
+# Persistence intermediates — raw JSONL files written by the watcher as it
+# runs. Consolidated into journal/watcher-checks-YYYY-MM-DD.json and
+# journal/executions-YYYY-MM-DD.json by scripts/persist_session.mjs (which
+# IS committed for the May 12 sniper agent).
+journal/watcher-checks-raw/
+journal/executions-raw/
+
+# macOS / editor junk
+.DS_Store
+**/.DS_Store
+.claude/

@@ -1,0 +1,72 @@
+{
+  "_comment": "Trade-entry gates for HSI morning session. ALL gates must pass before manual Y/N. Manual Y/N is still the final binding gate (mirrors US pattern).",
+
+  "vhsi_regime": {
+    "enabled": true,
+    "description": "Skip session if HSI volatility index is in panic or dead-zone regime",
+    "min": 15,
+    "max": 35,
+    "action_on_fail": "skip_session",
+    "data_source": "tradingview_quote_get",
+    "symbol": "HSI:VHSI"
+  },
+
+  "a50_correlation": {
+    "enabled": true,
+    "description": "China A50 and HSI futures must agree on direction in the first 15 min after HK open",
+    "window_sgt": "09:30-09:45",
+    "min_directional_agreement_pct": 60,
+    "action_on_fail": "skip_session",
+    "data_sources": {
+      "a50": "SGX:CN1!",
+      "hsi": "HKEX:HSImain"
+    }
+  },
+
+  "china_policy_blackout": {
+    "enabled": true,
+    "description": "No entries within ±30 min of scheduled PBoC / Politburo / major China data releases",
+    "blackout_minutes": 30,
+    "calendars": [
+      "PBoC rate decisions",
+      "China PMI (manufacturing + services)",
+      "Politburo announcements",
+      "HKMA policy statements"
+    ],
+    "action_on_fail": "block_entry"
+  },
+
+  "session_window": {
+    "enabled": true,
+    "description": "Only trade during defined HSI session windows",
+    "allowed_windows_sgt": [
+      "09:30-10:30",
+      "13:00-13:30",
+      "15:30-16:00"
+    ],
+    "action_on_fail": "block_entry"
+  },
+
+  "daily_trade_cap": {
+    "enabled": false,
+    "description": "Hard cap on trades per session. DISABLED 2026-06-02 per user (no trade cap on watchers). Binding gate is manual_dashboard_yn. Re-enable by setting enabled:true.",
+    "max_trades": 3,
+    "action_on_fail": "block_entry"
+  },
+
+  "manual_dashboard_yn": {
+    "enabled": true,
+    "description": "Binding final gate — dashboard Y/N toggle. Mirrors US setup.",
+    "default": "N",
+    "action_on_fail": "block_entry",
+    "binding": true
+  },
+
+  "correlation_chase_filter": {
+    "enabled": true,
+    "description": "Reject entries that are 'chase trades' — late entry on a fast move already in progress",
+    "max_distance_from_signal_pct": 0.3,
+    "action_on_fail": "block_entry",
+    "_inspiration": "Mirrors the US chase-trade diagnosis (May 1 post-mortem)"
+  }
+}

@@ -1,0 +1,17 @@
+# Per-day trade count (gitignored — recreated each HK trading day)
+state/traded_today_hk.json
+
+# Per-machine trailing-stop preferences. Defaults live in
+# contracts.json (default_trail_amount); this file holds user overrides
+# set via the dashboard. Per-machine, not synced across checkouts.
+state/trailing_instruments.json
+
+# Raw JSONL written by trade_window_hk.mjs as it runs. Aggregated later
+# by a persist_session_hsi.mjs script (TODO). Mirrors the US pattern of
+# raw → consolidated.
+journal/watcher-checks-raw/
+journal/executions-raw/
+
+# Manual Y/N toggle state is NOT gitignored — it's the binding gate and
+# we want its current value visible in git for audit (yn='Y' for today
+# SGT means the watcher was armed).

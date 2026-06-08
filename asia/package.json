@@ -1,0 +1,33 @@
+{
+  "name": "tradingview-mcp-asia",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Asia / HSI morning trading setup. Parallel sibling of root US setup. Fully separate scripts, dashboard, journal, Discord channel.",
+  "scripts": {
+    "premarket": "node scripts/premarket_asia.mjs",
+    "premarket:hsi": "node scripts/premarket_hsi.mjs",
+    "orb:hsi": "node scripts/post_open_orb.mjs",
+    "check:correlation": "node scripts/check_a50_correlation.mjs",
+    "refresh:calendar": "node scripts/refresh_calendar.mjs",
+    "verify:drawings": "node scripts/verify_drawings.mjs",
+    "test:hk-contracts": "node scripts/test_hk_contract_resolve.mjs",
+    "watcher:hsi": "node scripts/trade_window_hk.mjs HSI",
+    "watcher:tencent": "node scripts/trade_window_hk.mjs TENCENT",
+    "watcher:alibaba": "node scripts/trade_window_hk.mjs ALIBABA",
+    "watcher:xiaomi": "node scripts/trade_window_hk.mjs XIAOMI",
+    "persist:hsi": "node scripts/persist_session_hsi.mjs",
+    "dashboard:build": "cd dashboard && npm run build",
+    "dashboard:asia": "cd dashboard && npm run start -- --port 3001",
+    "dashboard:dev": "cd dashboard && npm run dev -- --port 3001"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@stoqey/ib": "^1.5.3",
+    "dotenv": "^16.4.5",
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
