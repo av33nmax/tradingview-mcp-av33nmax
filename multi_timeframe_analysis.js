@@ -27,8 +27,8 @@ process.stderr.on('error', (err) => { if (err.code !== 'EPIPE') throw err; });
 import { evaluate, evaluateAsync } from './src/connection.js';
 import { pickTarget, buildTargetCandidates, computeEntryConfluence } from './src/target_selector.js';
 
-const SYMBOLS = ['CME_MINI:ES1!', 'CME_MINI:NQ1!', 'CME_MINI:RTY1!', 'BATS:SPY', 'NASDAQ:QQQ', 'BATS:IWM', 'NASDAQ:AAPL', 'NASDAQ:NVDA', 'NASDAQ:AMZN'];
-const LABELS = { 'CME_MINI:ES1!': 'ES', 'CME_MINI:NQ1!': 'NQ', 'CME_MINI:RTY1!': 'RTY', 'BATS:SPY': 'SPY', 'NASDAQ:QQQ': 'QQQ', 'BATS:IWM': 'IWM', 'NASDAQ:AAPL': 'AAPL', 'NASDAQ:NVDA': 'NVDA', 'NASDAQ:AMZN': 'AMZN' };
+const SYMBOLS = ['CME_MINI:ES1!', 'CME_MINI:NQ1!', 'CME_MINI:RTY1!', 'BATS:SPY', 'NASDAQ:QQQ', 'BATS:IWM', 'NASDAQ:AAPL', 'NASDAQ:NVDA', 'NASDAQ:AMZN', 'NASDAQ:TSLA', 'NASDAQ:MU', 'NASDAQ:INTC'];
+const LABELS = { 'CME_MINI:ES1!': 'ES', 'CME_MINI:NQ1!': 'NQ', 'CME_MINI:RTY1!': 'RTY', 'BATS:SPY': 'SPY', 'NASDAQ:QQQ': 'QQQ', 'BATS:IWM': 'IWM', 'NASDAQ:AAPL': 'AAPL', 'NASDAQ:NVDA': 'NVDA', 'NASDAQ:AMZN': 'AMZN', 'NASDAQ:TSLA': 'TSLA', 'NASDAQ:MU': 'MU', 'NASDAQ:INTC': 'INTC' };
 const TIMEFRAMES = [
   { res: '15', label: '15m', barsNeeded: 300 },
   { res: '60', label: '1H',  barsNeeded: 300 },
@@ -641,7 +641,7 @@ function scoreSymbol(tfs) {
   // Futures→ETF pairs (broad-market correlation gate) + standalone stocks
   // (no futures correlate; aligned reduces to "bias is non-NEUTRAL").
   const futuresPairs = [['ES', 'SPY'], ['NQ', 'QQQ'], ['RTY', 'IWM']];
-  const standaloneStocks = ['AAPL', 'NVDA', 'AMZN'];
+  const standaloneStocks = ['AAPL', 'NVDA', 'AMZN', 'TSLA', 'MU', 'INTC'];
   const entries = [
     ...futuresPairs.map(([fut, etf]) => ({ fut, etf })),
     ...standaloneStocks.map((s) => ({ fut: null, etf: s })),

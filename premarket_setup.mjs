@@ -186,6 +186,11 @@ const TARGETS = [
   { match: 'BATS:AAPL', key: 'AAPL', label: 'AAPL (Iceman Style)', depthBelow: 22 },
   { match: 'BATS:NVDA', key: 'NVDA', label: 'NVDA (Iceman Style)', depthBelow: 12 },
   { match: 'BATS:AMZN', key: 'AMZN', label: 'AMZN (Iceman Style)', depthBelow: 20 },
+  // Added 2026-06-10 (drawings only — NOT wired into the watcher: no rVol
+  // calibration for these names yet). depthBelow ≈ 8% of price at add time.
+  { match: 'BATS:TSLA', key: 'TSLA', label: 'TSLA (Tesla)',  depthBelow: 30 },
+  { match: 'BATS:MU',   key: 'MU',   label: 'MU (Micron)',   depthBelow: 70 },
+  { match: 'BATS:INTC', key: 'INTC', label: 'INTC (Intel)',  depthBelow: 9 },
 ];
 
 // ─── Run multi_timeframe_analysis.js, pass stdout through to user,
