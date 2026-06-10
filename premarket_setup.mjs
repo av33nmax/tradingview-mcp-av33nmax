@@ -1312,6 +1312,9 @@ function rePickTargetsWithAurora(tickerEntry, auroraZones) {
   // across 6 tabs.
   const auroraByTicker = {};
   let firstTab = true;
+  // Multi-TF S/R zones (SZone/RZone) — best-effort, shares asia/lib/sr_zones.mjs
+  // with the Asia premarket + standalone CLI. Set DRAW_SR=0 to disable.
+  const DRAW_SR_ZONES = process.env.DRAW_SR !== '0';
   for (const { tab, config } of matched) {
     if (!firstTab) await new Promise(r => setTimeout(r, 800));
     firstTab = false;
@@ -1319,6 +1322,15 @@ function rePickTargetsWithAurora(tickerEntry, auroraZones) {
       const result = await processTab(tab, config, analysisJson);
       if (result?.ticker) auroraByTicker[result.ticker] = result.auroraZones ?? [];
     } catch (e) { console.log(`  ${config.label} failed: ${e.message}`); }
+    // S/R zones — isolated; dynamic import so US premarket never hard-depends on
+    // the asia lib, and a failure here can't break the routine.
+    if (DRAW_SR_ZONES) {
+      try {
+        const { drawSRForSymbol } = await import('./asia/lib/sr_zones.mjs');
+        const sr = await drawSRForSymbol(config.match);
+        console.log(`    S/R: ${sr._missing ? 'no tab' : `${sr.R}R/${sr.S}S @ ${sr.lastPrice}`}`);
+      } catch (e) { console.log(`    S/R draw failed: ${e.message}`); }
+    }
   }
 
   // STEP 3: re-write entry_notes with Aurora zones merged in. Reads the

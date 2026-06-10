@@ -39,6 +39,7 @@ import {
 } from "../lib/multi_tab.mjs";
 import { analyzeMultiTF } from "../lib/multi_tf.mjs";
 import { withDrawSession } from "../lib/draw.mjs";
+import { drawSRForSymbol } from "../lib/sr_zones.mjs";
 import { evaluatePolicyGate } from "../lib/calendar.mjs";
 
 // Tolerate broken stdout pipes (dashboard may spawn this and disconnect mid-run)
@@ -51,6 +52,9 @@ process.stderr.on("error", (err) => {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ASIA_ROOT = path.resolve(__dirname, "..");
+
+// Toggle Stage 4b multi-TF S/R zones (SZone/RZone). Set DRAW_SR=0 to disable.
+const DRAW_SR_ZONES = process.env.DRAW_SR !== "0";
 
 // =============================================================================
 // Config loading
@@ -405,6 +409,30 @@ async function drawLevelsOnChart(mtfAnalysis, primaryInstruments) {
     total_drawn: results.reduce((s, r) => s + (r.drawn || 0), 0),
     total_cleaned: results.reduce((s, r) => s + (r.cleaned || 0), 0),
   };
+}
+
+// =============================================================================
+// Stage 4b: Multi-TF S/R zones — IMPLEMENTED (shared lib)
+// =============================================================================
+
+/**
+ * Draw multi-TF S/R zones (SZone/RZone) for every primary instrument.
+ * Best-effort: per-instrument errors are logged and skipped; never throws.
+ * Shares asia/lib/sr_zones.mjs with the US premarket + the standalone CLI.
+ */
+async function drawSRZones(primaryInstruments) {
+  const keys = Object.keys(primaryInstruments).filter((k) => !k.startsWith("_"));
+  console.log(`[stage 4b] Drawing multi-TF S/R zones for ${keys.length} instruments…`);
+  for (const key of keys) {
+    const spec = primaryInstruments[key];
+    const pattern = spec.tradingview_search || key;
+    try {
+      const r = await drawSRForSymbol(pattern);
+      console.log(`[stage 4b]   ${key.toUpperCase()}: ${r._missing ? "no tab" : `${r.R}R/${r.S}S @ ${r.lastPrice}`}`);
+    } catch (e) {
+      console.log(`[stage 4b]   ${key.toUpperCase()}: error ${e.message}`);
+    }
+  }
 }
 
 // =============================================================================
@@ -910,6 +938,13 @@ async function main() {
     );
   } finally {
     await disconnect().catch(() => {});
+  }
+
+  // Stage 4b: Multi-TF S/R zones — best-effort, isolated from the data/journal
+  // flow (opens its own CDP sessions; never throws upward).
+  if (DRAW_SR_ZONES) {
+    try { await drawSRZones(contracts.primary); }
+    catch (e) { console.error(`[stage 4b] S/R zones failed: ${e.message}`); }
   }
 
   const gateResults = await evaluateGates(gates, refState, priorLevels);
