@@ -27,7 +27,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  findAllChartsBySymbol,
+  findChartsAcrossTabs,
   readBarsAtResolutionFromTab,
 } from "../lib/multi_tab.mjs";
 import { computeORB, todaysHKOpenTimestamp } from "../lib/orb.mjs";
@@ -124,18 +124,19 @@ async function saveStructuredTriggers(results, primaryKeys) {
  * Process one index: read M15 bars, compute ORB + trigger, draw lines.
  */
 async function processIndex(label, priorState) {
-  const found = await findAllChartsBySymbol(label);
-  if (!found) {
+  // Every pane on every tab showing this symbol — dedicated ticker tab AND
+  // overview-tab panes — gets the same ORB lines.
+  const targets = await findChartsAcrossTabs(label);
+  if (!targets.length) {
     return { label, _missing_tab: true };
   }
-  const tabId = found.tab.id;
-  const chartIndices = found.chartIndices;
+  const tabId = targets[0].tab.id;
 
-  // Read enough M15 bars to cover today + ATR window. Read from the first
-  // matching pane (switches its TF to 15 and restores); the draw below repeats
-  // identically on every pane.
+  // Read enough M15 bars to cover today + ATR window. Read once from the
+  // first matching pane (switches its TF to 15 and restores); the draw below
+  // repeats identically on every pane of every tab.
   const { bars } = await readBarsAtResolutionFromTab(tabId, "15", 60, {
-    chartIndex: chartIndices[0],
+    chartIndex: targets[0].chartIndices[0],
   });
   if (!Array.isArray(bars) || bars.length === 0) {
     return { label, _error: "no M15 bars", tabId };
@@ -209,12 +210,15 @@ async function processIndex(label, priorState) {
   let cleaned = 0;
   const tag = `[ORB ${label}]`;
 
-  // Draw on EVERY matching pane (e.g. 15m/5m/1m) so the levels stay consistent
-  // across the whole layout, not just the first pane. Each pane cleans first,
-  // then draws — so the end state converges to one clean set per pane whether
-  // or not TradingView's drawing-sync is on.
-  for (const ci of chartIndices) {
-    await withDrawSession(tabId, async (draw) => {
+  // Draw on EVERY matching pane of EVERY matching tab so the levels stay
+  // consistent everywhere the symbol shows. Each pane cleans first, then
+  // draws — converges to one clean set per pane whether or not TradingView's
+  // drawing-sync is on.
+  let paneCount = 0;
+  for (const target of targets) {
+  for (const ci of target.chartIndices) {
+    paneCount++;
+    await withDrawSession(target.tab.id, async (draw) => {
       // Tag-scan cleanup (mirrors US premarket_setup). Removes ANY shape on
       // this pane whose label starts with `[ORB <label>]`, plus the clean
       // (tag-free) auto-drawn ORB/T1/T2 rays. Robust against TV restart /
@@ -234,13 +238,14 @@ async function processIndex(label, priorState) {
       }
     }, { chartIndex: ci });
   }
+  }
 
   return {
     label,
     tabId,
-    chart_index: chartIndices[0],
-    chart_indices: chartIndices,
-    panes: chartIndices.length,
+    chart_index: targets[0].chartIndices[0],
+    panes: paneCount,
+    tabs: targets.length,
     orb: trigger.orb,
     long: trigger.long,
     short: trigger.short,
@@ -267,7 +272,7 @@ function formatResult(r) {
   return `**${r.label}**: ORB ${Math.round(r.orb.low)}–${Math.round(r.orb.high)} (range ${Math.round(r.orb.range)}, ${r.range_vs_atr ?? "?"}× ATR)
   - Long  → entry ${Math.round(r.long.entry)}, stop ${Math.round(r.long.stop)}, T1 ${Math.round(r.long.T1)}, T2 ${Math.round(r.long.T2)}
   - Short → entry ${Math.round(r.short.entry)}, stop ${Math.round(r.short.stop)}, T1 ${Math.round(r.short.T1)}, T2 ${Math.round(r.short.T2)}
-  - Drew ${r.drawn} lines across ${r.panes ?? 1} pane(s) (cleaned ${r.cleaned})`;
+  - Drew ${r.drawn} lines across ${r.panes ?? 1} pane(s) on ${r.tabs ?? 1} tab(s) (cleaned ${r.cleaned})`;
 }
 
 async function appendJournal(results) {

@@ -34,7 +34,7 @@ import { computePriorLevels } from "../lib/levels.mjs";
 import {
   readReferenceQuote,
   findTabBySymbol,
-  findAllChartsBySymbol,
+  findChartsAcrossTabs,
   readDailyBarsFromTab,
 } from "../lib/multi_tab.mjs";
 import { analyzeMultiTF } from "../lib/multi_tf.mjs";
@@ -288,29 +288,41 @@ async function drawForIndex(indexLabel, mtfAnalysis, priorShapeIds) {
     return { drawn: 0, cleaned: 0, _skipped: indexLabel };
   }
 
-  // Find EVERY pane in the matching tab (multi-pane layouts show the same
-  // symbol at 15m/5m/1m — draw on all of them, not just the first).
-  const found = await findAllChartsBySymbol(indexLabel);
-  if (!found) return { drawn: 0, cleaned: 0, _skipped: indexLabel };
-  const tabId = found.tab.id;
-  const chartIndices = found.chartIndices;
+  // Find EVERY pane on EVERY tab showing this symbol — the dedicated
+  // multi-pane ticker tab (15m/5m/1m) AND any overview-tab pane. Levels must
+  // stay consistent everywhere the symbol is displayed.
+  const targets = await findChartsAcrossTabs(indexLabel);
+  if (!targets.length) return { drawn: 0, cleaned: 0, _skipped: indexLabel };
+  const tabId = targets[0].tab.id;
 
   const newShapeIds = [];
   let cleaned = 0;
   const tag = `[asia-pm ${indexLabel}]`;
 
-  // Pre-open reference levels (same across panes) — PMH/PML, instrument-aware:
-  //   • HSI futures (night session) → PMH/PML from the overnight range
-  //   • cash stocks (no night session) → PDH/PDL from the prior day
-  // Purple dashed; clean labels (no tag) — cleaned via removeByLabelMatch.
+  // Pre-open reference levels (same across panes) — instrument-aware:
+  //   • futures (night session): PMH/PML overnight range (dashed) AND PDH/PDL
+  //     prior day (solid). Was either/or until 2026-06-10 — the HSI bounce that
+  //     day died exactly at the journaled-but-undrawn PDL 24,373. Prior-day
+  //     levels matter for futures too.
+  //   • cash stocks (no night session): PDH/PDL only.
+  // Purple; clean labels (no tag) — cleaned via removeByLabelMatch.
   const PM_COLOR = "#AB47BC";
   const on = mtfAnalysis.overnight;
-  let pmH = null, pmL = null, pmHLabel = "PMH", pmLLabel = "PML";
+  const refLevels = [];
   if (on && on.high != null && on.low != null) {
-    pmH = on.high; pmL = on.low;
-  } else if (mtfAnalysis.prior_high != null && mtfAnalysis.prior_low != null) {
-    pmH = mtfAnalysis.prior_high; pmL = mtfAnalysis.prior_low;
-    pmHLabel = "PDH"; pmLLabel = "PDL";
+    refLevels.push({ price: on.high, label: "PMH", linestyle: 2 });
+    refLevels.push({ price: on.low, label: "PML", linestyle: 2 });
+  }
+  if (mtfAnalysis.prior_high != null && mtfAnalysis.prior_low != null) {
+    // Skip a PD line that sits within 0.05% of its overnight twin — the PM
+    // line already marks that price; a second label there is clutter.
+    const near = (a, b) => b != null && Math.abs(a - b) / a < 0.0005;
+    const pmh = refLevels[0]?.price ?? null;
+    const pml = refLevels[1]?.price ?? null;
+    if (!near(mtfAnalysis.prior_high, pmh))
+      refLevels.push({ price: mtfAnalysis.prior_high, label: "PDH", linestyle: 0 });
+    if (!near(mtfAnalysis.prior_low, pml))
+      refLevels.push({ price: mtfAnalysis.prior_low, label: "PDL", linestyle: 0 });
   }
 
   // Daily swing R/S levels + FVG zones — DISABLED 2026-06-08 (decluttered to
@@ -318,11 +330,14 @@ async function drawForIndex(indexLabel, mtfAnalysis, priorShapeIds) {
   const DRAW_SWINGS = false;
   const DRAW_FVG = false;
 
-  // Draw on EVERY matching pane. Each pane cleans first, then draws — so the
-  // end state converges to one clean set per pane whether or not TradingView's
-  // drawing-sync is on.
-  for (const ci of chartIndices) {
-    await withDrawSession(tabId, async (draw) => {
+  // Draw on EVERY matching pane of EVERY matching tab. Each pane cleans
+  // first, then draws — so the end state converges to one clean set per pane
+  // whether or not TradingView's drawing-sync is on.
+  let paneCount = 0;
+  for (const target of targets) {
+  for (const ci of target.chartIndices) {
+    paneCount++;
+    await withDrawSession(target.tab.id, async (draw) => {
       // Tag-scan cleanup (mirrors US premarket_setup). Removes ANY shape on
       // this pane whose label starts with `[asia-pm <label>]`, plus the clean
       // (tag-free) auto-drawn PMH/PML/PDH/PDL rays. Robust against TV restart /
@@ -356,20 +371,19 @@ async function drawForIndex(indexLabel, mtfAnalysis, priorShapeIds) {
         if (entity_id) newShapeIds.push(entity_id);
       }
 
-      if (pmH != null && pmL != null) {
-        const h = await draw.hline(pmH, pmHLabel, PM_COLOR, { linestyle: 2 });
-        if (h.entity_id) newShapeIds.push(h.entity_id);
-        const l = await draw.hline(pmL, pmLLabel, PM_COLOR, { linestyle: 2 });
-        if (l.entity_id) newShapeIds.push(l.entity_id);
+      for (const lv of refLevels) {
+        const r = await draw.hline(lv.price, lv.label, PM_COLOR, { linestyle: lv.linestyle });
+        if (r.entity_id) newShapeIds.push(r.entity_id);
       }
     }, { chartIndex: ci });
+  }
   }
 
   return {
     tabId,
-    chart_index: chartIndices[0],
-    chart_indices: chartIndices,
-    panes: chartIndices.length,
+    chart_index: targets[0].chartIndices[0],
+    panes: paneCount,
+    tabs: targets.length,
     drawn: newShapeIds.length,
     cleaned,
     shapeIds: newShapeIds,
@@ -398,7 +412,7 @@ async function drawLevelsOnChart(mtfAnalysis, primaryInstruments) {
       newState[res.tabId] = res.shapeIds;
     }
     console.log(
-      `[stage 4]   ${key.toUpperCase()}: ${res._skipped ? "skipped (no tab)" : `cleaned ${res.cleaned}, drew ${res.drawn} across ${res.panes ?? 1} pane(s)`}`
+      `[stage 4]   ${key.toUpperCase()}: ${res._skipped ? "skipped (no tab)" : `cleaned ${res.cleaned}, drew ${res.drawn} across ${res.panes ?? 1} pane(s) on ${res.tabs ?? 1} tab(s)`}`
     );
   }
 
@@ -862,7 +876,7 @@ _Drew **${d.total_drawn}** shapes (cleaned **${d.total_cleaned}** from prior run
 ${(d.results || [])
   .map(
     (r) =>
-      `- **${r.index}**: ${r._skipped ? "_skipped (no tab)_" : `cleaned ${r.cleaned}, drew ${r.drawn} across ${r.panes ?? 1} pane(s)`}`
+      `- **${r.index}**: ${r._skipped ? "_skipped (no tab)_" : `cleaned ${r.cleaned}, drew ${r.drawn} across ${r.panes ?? 1} pane(s) on ${r.tabs ?? 1} tab(s)`}`
   )
   .join("\n")}
 

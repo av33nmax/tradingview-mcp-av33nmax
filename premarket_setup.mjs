@@ -1275,25 +1275,49 @@ function rePickTargetsWithAurora(tickerEntry, auroraZones) {
     process.exit(1);
   }
 
-  // Identify each tab by the symbol on pane 0
+  // Identify each tab by its pane symbols. A tab is processed as a DEDICATED
+  // ticker tab only when no OTHER pane holds a different TARGETS symbol.
+  // Multi-target tabs (the all-US overview, the US⇄HK swap tab) are routed to
+  // the STEP 2.5 mirror pass instead — treating the overview as "a SPY tab"
+  // (pre-2026-06-10 behavior) wiped all six panes and redrew only SPY.
   const matched = [];
+  const mirrorTabs = [];
   for (const tab of chartTabs) {
     try {
       const client = await CDP({ host: CDP_HOST, port: CDP_PORT, target: tab.id });
       await client.Runtime.enable();
-      const sym = await client.Runtime.evaluate({
+      const syms = await client.Runtime.evaluate({
         expression: `
           (function() {
-            var w = window.TradingViewApi._chartWidgetCollection.getAll()[0];
-            try { return w.model().mainSeries().symbol(); } catch(e) { return ''; }
+            try {
+              var defs = window.TradingViewApi._chartWidgetCollection._chartWidgetsDefs;
+              var out = [];
+              for (var i = 0; i < defs.length; i++) {
+                try { out.push(defs[i].chartWidget.model().mainSeries().symbol()); } catch(e) { out.push(null); }
+              }
+              return out;
+            } catch(e) { return []; }
           })()
         `,
         returnByValue: true,
-      }).then(r => r.result.value).catch(() => '');
+      }).then(r => r.result.value).catch(() => []);
       await client.close();
-      const cfg = TARGETS.find(t => t.match === sym);
-      if (cfg) matched.push({ tab, config: cfg });
-      else console.log(`    (skipping tab with symbol ${sym || 'unknown'})`);
+
+      const sym0 = (syms && syms[0]) || '';
+      const cfg0 = TARGETS.find(t => t.match === sym0);
+      const targetPanes = (syms || [])
+        .map((s, idx) => ({ idx, config: TARGETS.find(t => t.match === s) }))
+        .filter(p => p.config);
+      const distinctTargets = new Set(targetPanes.map(p => p.config.key));
+
+      if (cfg0 && distinctTargets.size <= 1) {
+        matched.push({ tab, config: cfg0 });
+      } else if (targetPanes.length > 0) {
+        mirrorTabs.push({ tab, panes: targetPanes });
+        console.log(`    (multi-symbol tab ${tab.id.slice(0, 8)}: ${[...distinctTargets].join('/')} — routed to mirror pass)`);
+      } else {
+        console.log(`    (skipping tab with symbol ${sym0 || 'unknown'})`);
+      }
     } catch (e) {
       console.log(`    tab ${tab.url}: ${e.message}`);
     }
@@ -1330,6 +1354,73 @@ function rePickTargetsWithAurora(tickerEntry, auroraZones) {
         const sr = await drawSRForSymbol(config.match);
         console.log(`    S/R: ${sr._missing ? 'no tab' : `${sr.R}R/${sr.S}S @ ${sr.lastPrice}`}`);
       } catch (e) { console.log(`    S/R draw failed: ${e.message}`); }
+    }
+  }
+
+  // STEP 2.5: mirror trigger/session/bias lines onto overview & swap tabs.
+  // Every pane on a multi-symbol tab whose symbol matches a TARGETS config
+  // gets the SAME lines its dedicated tab got, drawn by the same functions.
+  // Cleanup here is SCOPED to the labels this pass redraws ([SESS]/[T-A]/
+  // [T-B]/[BIAS]) — S/R zones and hand-drawn lines on these dashboard tabs
+  // survive, unlike the dedicated-tab cleanupPane sweep.
+  if (mirrorTabs.length > 0) {
+    console.log('\n  STEP 2.5: mirroring lines to overview/swap tabs');
+    for (const { tab, panes } of mirrorTabs) {
+      let client = null;
+      try {
+        client = await CDP({ host: CDP_HOST, port: CDP_PORT, target: tab.id });
+        await client.Runtime.enable();
+        const run = makeRunner(client);
+        for (const { idx, config } of panes) {
+          const final = analysisJson?.final?.[config.key];
+          const entryNotes = final?.entry_notes;
+          const sessionLevels = final?.session_levels;
+          if (!entryNotes && !sessionLevels) continue;
+          try {
+            await focusPane(run, idx);
+            await run(`
+              (function() {
+                var api = window.TradingViewApi._activeChartWidgetWV.value();
+                var shapes = api.getAllShapes();
+                var re = /^\\[(SESS|T-A|T-B|BIAS)/;
+                for (var j = 0; j < shapes.length; j++) {
+                  try {
+                    var s = api.getShapeById(shapes[j].id);
+                    var props = s && s.getProperties ? s.getProperties() : null;
+                    var text = props && props.text ? String(props.text) : '';
+                    if (re.test(text.trim())) api.removeEntity(shapes[j].id);
+                  } catch(e) {}
+                }
+              })()
+            `);
+            const lastTime = await run(`
+              (function() {
+                var chart = window.TradingViewApi._activeChartWidgetWV.value();
+                var bars = chart._chartWidget.model().mainSeries().bars();
+                var v = bars.valueAt(bars.lastIndex());
+                return v ? v[0] : Math.floor(Date.now()/1000);
+              })()
+            `);
+            let triggerPrices = [];
+            if (entryNotes) {
+              try { triggerPrices = (await drawTriggerAnnotations(run, config.key, entryNotes, lastTime)) || []; }
+              catch (e) { console.log(`    mirror ${config.key} triggers failed: ${e.message}`); }
+            }
+            if (sessionLevels) {
+              try { await drawSessionLevels(run, config.key, sessionLevels, lastTime, triggerPrices); }
+              catch (e) { console.log(`    mirror ${config.key} session levels failed: ${e.message}`); }
+            }
+            try { await drawBiasLabel(run, config.key, final); } catch (e) { /* cosmetic */ }
+            console.log(`    mirrored ${config.key} → tab ${tab.id.slice(0, 8)} pane ${idx}`);
+          } catch (e) {
+            console.log(`    mirror ${config.key} pane ${idx} failed: ${e.message}`);
+          }
+        }
+      } catch (e) {
+        console.log(`    mirror tab ${tab.id.slice(0, 8)} failed: ${e.message}`);
+      } finally {
+        try { if (client) await client.close(); } catch {}
+      }
     }
   }
 

@@ -10,7 +10,7 @@
  * resistance (above) → draw one horizontal line per level, "SZone" / "RZone",
  * right-aligned, on every pane (clean-first, sync-agnostic).
  */
-import { findAllChartsBySymbol, readBarsAtResolutionFromTab } from "./multi_tab.mjs";
+import { findChartsAcrossTabs, readBarsAtResolutionFromTab } from "./multi_tab.mjs";
 import { withDrawSession } from "./draw.mjs";
 import { findSwings } from "./swings.mjs";
 
@@ -70,14 +70,10 @@ export function mergeSRZones(candidates, lastPrice, opts = {}) {
 }
 
 /**
- * Read every TF for an already-resolved target, compute merged S/R, and draw.
- * target = { tabId, actualSymbol, chartIndices }. Returns a summary object.
+ * Read every TF from one tab/pane and compute merged S/R zones.
+ * Returns { lastPrice, rZones, sZones, zones }.
  */
-export async function drawSRForTarget({ tabId, actualSymbol, chartIndices }, opts = {}) {
-  const cfg = { ...SR_DEFAULTS, ...opts };
-  const panes = chartIndices;
-  const readIdx = panes[0];
-
+async function computeSR(tabId, readIdx, cfg) {
   const candidates = [];
   let lastPrice = null;
   for (const tf of SR_TF_CONFIG) {
@@ -88,30 +84,56 @@ export async function drawSRForTarget({ tabId, actualSymbol, chartIndices }, opt
     for (const h of highs.slice(-tf.take)) candidates.push({ price: h.price, tf: tf.label, weight: tf.weight });
     for (const l of lows.slice(-tf.take)) candidates.push({ price: l.price, tf: tf.label, weight: tf.weight });
   }
-
   const { rZones, sZones } = mergeSRZones(candidates, lastPrice, cfg);
-  const finalZones = [...rZones, ...sZones];
+  return { lastPrice, rZones, sZones, zones: [...rZones, ...sZones] };
+}
 
+/** Clean + draw a zone set on every pane of one tab target. */
+async function drawZonesOnTarget(tabId, panes, zones, cfg) {
   for (const ci of panes) {
     await withDrawSession(tabId, async (draw) => {
       await draw.removeByLabelMatch(cfg.labelRe);
-      for (const z of finalZones) {
+      for (const z of zones) {
         const color = z.side === "R" ? cfg.resColor : cfg.supColor;
         const text = z.side === "R" ? "RZone" : "SZone";
         await draw.hline(z.price, text, color, { linestyle: 0, linewidth: z.strength >= 2 ? 2 : 1 });
       }
     }, { chartIndex: ci });
   }
-
-  return { symbol: actualSymbol, lastPrice, R: rZones.length, S: sZones.length, zones: finalZones };
 }
 
 /**
- * Resolve a symbol (e.g. "700", "BATS:SPY") to its tab, then draw S/R.
+ * Read every TF for an already-resolved single target, compute, and draw.
+ * target = { tabId, actualSymbol, chartIndices }. Returns a summary object.
+ */
+export async function drawSRForTarget({ tabId, actualSymbol, chartIndices }, opts = {}) {
+  const cfg = { ...SR_DEFAULTS, ...opts };
+  const { lastPrice, rZones, sZones, zones } = await computeSR(tabId, chartIndices[0], cfg);
+  await drawZonesOnTarget(tabId, chartIndices, zones, cfg);
+  return { symbol: actualSymbol, lastPrice, R: rZones.length, S: sZones.length, zones, tabs: 1, panes: chartIndices.length };
+}
+
+/**
+ * Resolve a symbol (e.g. "700", "BATS:SPY") to EVERY tab it appears on —
+ * dedicated multi-pane ticker tabs AND overview-tab panes — compute the zones
+ * once (from the first match), and draw the same set everywhere.
  * Returns { _missing: true, R:0, S:0 } if no matching tab is loaded.
  */
 export async function drawSRForSymbol(symbol, opts = {}) {
-  const f = await findAllChartsBySymbol(symbol);
-  if (!f) return { symbol, _missing: true, R: 0, S: 0 };
-  return drawSRForTarget({ tabId: f.tab.id, actualSymbol: f.actualSymbol, chartIndices: f.chartIndices }, opts);
+  const cfg = { ...SR_DEFAULTS, ...opts };
+  const targets = await findChartsAcrossTabs(symbol);
+  if (!targets.length) return { symbol, _missing: true, R: 0, S: 0 };
+
+  const first = targets[0];
+  const { lastPrice, rZones, sZones, zones } = await computeSR(first.tab.id, first.chartIndices[0], cfg);
+  let panes = 0;
+  for (const t of targets) {
+    await drawZonesOnTarget(t.tab.id, t.chartIndices, zones, cfg);
+    panes += t.chartIndices.length;
+  }
+  return {
+    symbol: first.actualSymbol, lastPrice,
+    R: rZones.length, S: sZones.length, zones,
+    tabs: targets.length, panes,
+  };
 }

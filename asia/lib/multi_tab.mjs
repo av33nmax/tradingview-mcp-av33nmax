@@ -166,36 +166,47 @@ export function normaliseSymbol(s) {
 }
 
 /**
- * Find EVERY chart pane whose loaded symbol matches the requested pattern,
- * within the first tab that has at least one match.
+ * Find matching panes for a symbol across EVERY open tab — not just the first.
  *
- * Multi-pane layouts (e.g. HSI1! shown at 15m/5m/1m in one tab) carry the
- * same symbol on every pane. Use this when you need to act on all of them —
- * e.g. drawing auto-levels on every pane, not just the first.
+ * The user runs duplicated layouts: each ticker has a dedicated multi-pane tab
+ * (15m/5m/1m) AND appears as one pane of a US/Asia overview tab. Draw paths
+ * must hit all of them so levels stay consistent everywhere the symbol shows.
  *
- * Returns { tab, actualSymbol, chartIndices } or null if no match.
- * `chartIndices` are positions in the tab's `_chartWidgetsDefs` array, in
- * pane order. `actualSymbol` is the first matching pane's symbol.
+ * Returns [{ tab, actualSymbol, chartIndices }] — one entry per tab with ≥1
+ * matching pane (MRU tab order). Empty array if no match anywhere.
  */
-export async function findAllChartsBySymbol(requestedSymbol) {
+export async function findChartsAcrossTabs(requestedSymbol) {
   const targetRoot = normaliseSymbol(requestedSymbol);
-  if (!targetRoot) return null;
+  if (!targetRoot) return [];
 
   const tabs = await listTabs();
+  const out = [];
   for (const tab of tabs) {
     const charts = await getChartsInTab(tab.id);
     const matching = charts.filter(
       (c) => normaliseSymbol(c.symbol) === targetRoot
     );
     if (matching.length > 0) {
-      return {
+      out.push({
         tab,
         actualSymbol: matching[0].symbol,
         chartIndices: matching.map((c) => c.chartIndex),
-      };
+      });
     }
   }
-  return null;
+  return out;
+}
+
+/**
+ * Find every matching pane within the FIRST tab that has a match.
+ * Thin wrapper over findChartsAcrossTabs — use for reads (bars need one
+ * source, not N); draw paths should use findChartsAcrossTabs instead.
+ *
+ * Returns { tab, actualSymbol, chartIndices } or null if no match.
+ */
+export async function findAllChartsBySymbol(requestedSymbol) {
+  const all = await findChartsAcrossTabs(requestedSymbol);
+  return all.length > 0 ? all[0] : null;
 }
 
 /**
