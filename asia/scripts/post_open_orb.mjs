@@ -121,6 +121,27 @@ async function saveStructuredTriggers(results, primaryKeys) {
 }
 
 /**
+ * Wipe this instrument's ORB/target lines (tagged legacy + clean labels) on
+ * every pane of every matching tab. Used by the pre-completion paths: when
+ * the ORB isn't computable yet, the PRIOR session's lines must still come
+ * down — stale levels are worse than no levels (2026-06-12: Wednesday's
+ * stale T1▲ masqueraded as Friday's ORB H all morning).
+ */
+async function cleanORBLines(targets, label) {
+  let cleaned = 0;
+  const tag = `[ORB ${label}]`;
+  for (const target of targets) {
+    for (const ci of target.chartIndices) {
+      await withDrawSession(target.tab.id, async (draw) => {
+        cleaned += await draw.removeByTagPrefix(tag);
+        cleaned += await draw.removeByLabelMatch('^(ORB [HL]|T1 [▲▼]|T2 [▲▼])');
+      }, { chartIndex: ci });
+    }
+  }
+  return cleaned;
+}
+
+/**
  * Process one index: read M15 bars, compute ORB + trigger, draw lines.
  */
 async function processIndex(label, priorState) {
@@ -144,17 +165,21 @@ async function processIndex(label, priorState) {
 
   const orb = computeORB(bars);
 
-  if (orb._waiting) {
-    return {
-      label,
-      _waiting: true,
-      hk_open_ts: orb.hk_open_ts,
-      orb_complete_ts: orb.orb_complete_ts,
-      tabId,
-    };
-  }
-  if (orb._no_bar_yet) {
-    return { label, _no_bar_yet: true, tabId };
+  if (orb._waiting || orb._no_bar_yet) {
+    // Can't compute today's ORB yet — but the prior session's lines must
+    // still come down so nothing stale masquerades as today's levels.
+    const cleaned_stale = await cleanORBLines(targets, label);
+    if (orb._waiting) {
+      return {
+        label,
+        _waiting: true,
+        hk_open_ts: orb.hk_open_ts,
+        orb_complete_ts: orb.orb_complete_ts,
+        cleaned_stale,
+        tabId,
+      };
+    }
+    return { label, _no_bar_yet: true, cleaned_stale, tabId };
   }
 
   const trigger = buildORBTrigger(orb, bars);
@@ -264,10 +289,10 @@ function formatResult(r) {
   if (r._error) return `**${r.label}**: _error: ${r._error}_`;
   if (r._waiting) {
     const eta = new Date(r.orb_complete_ts * 1000).toISOString();
-    return `**${r.label}**: _waiting — ORB completes at ${eta}_`;
+    return `**${r.label}**: _waiting — ORB completes at ${eta} (wiped ${r.cleaned_stale ?? 0} stale line(s))_`;
   }
   if (r._no_bar_yet) {
-    return `**${r.label}**: _09:30 passed but no M15 bar found yet (data lag?)_`;
+    return `**${r.label}**: _09:30 passed but no M15 bar found yet (data lag?) — wiped ${r.cleaned_stale ?? 0} stale line(s)_`;
   }
   return `**${r.label}**: ORB ${Math.round(r.orb.low)}–${Math.round(r.orb.high)} (range ${Math.round(r.orb.range)}, ${r.range_vs_atr ?? "?"}× ATR)
   - Long  → entry ${Math.round(r.long.entry)}, stop ${Math.round(r.long.stop)}, T1 ${Math.round(r.long.T1)}, T2 ${Math.round(r.long.T2)}

@@ -18,14 +18,15 @@
  *      against saved layouts that retained the _DLY identifier.
  *   3. refresh_calendar.mjs       → policy events (China/HK news)
  *   4. premarket_hsi.mjs          → multi-TF bias + key levels + FVG draw
- *   5. check_a50_correlation.mjs  → HSI/A50 first-bar agreement (≥09:45 SGT)
- *   6. post_open_orb.mjs          → ORB compute + draw          (≥09:45 SGT)
+ *   5. check_a50_correlation.mjs  → HSI/A50 first-bar agreement (≥10:00 SGT)
+ *   6. post_open_orb.mjs          → ORB compute + draw          (≥10:00 SGT)
  *   7. verify_drawings.mjs        → sanity-check that shapes are on chart
  *
- * Steps 3 & 4 are deliberately SKIPPED pre-09:45 SGT — the M15 opening bar
- * isn't complete yet, so there's no ORB to compute / correlation to run.
- * Re-running this script after 09:45 will fill them in (and the upfront
- * cleanup ensures no stacking).
+ * Steps 5 & 6 are deliberately SKIPPED pre-10:00 SGT — the 30-min opening
+ * range isn't complete yet, so there's no ORB to compute / correlation to
+ * run. Re-running this script after 10:00 will fill them in (and the upfront
+ * cleanup ensures no stacking). The STEP 1 cleanup wipes the PRIOR session's
+ * ORB lines either way — stale levels are worse than no levels.
  *
  * Usage:
  *   npm run premarket                       # from asia/
@@ -37,7 +38,8 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { findTabBySymbol, withTabSession } from '../lib/multi_tab.mjs';
+import { findTabBySymbol, findChartsAcrossTabs, withTabSession } from '../lib/multi_tab.mjs';
+import { withDrawSession } from '../lib/draw.mjs';
 import { swapTabs } from '../lib/tab_swap.mjs';
 
 process.stdout.on('error', (e) => { if (e.code !== 'EPIPE') throw e; });
@@ -49,8 +51,9 @@ const SCRIPTS_DIR = __dirname;
 const HK_SYMBOLS = ['HSI', '700', '9988', '1810'];
 
 const SGT_OFFSET_HOURS = 8;
-const ORB_COMPLETE_HOUR_SGT = 9;
-const ORB_COMPLETE_MIN_SGT = 45;
+// 30-min ORB (since 2026-06-08): completes at 10:00 SGT (was 09:45 / 15-min).
+const ORB_COMPLETE_HOUR_SGT = 10;
+const ORB_COMPLETE_MIN_SGT = 0;
 
 function isAfterORBComplete() {
   const now = new Date();
@@ -60,45 +63,41 @@ function isAfterORBComplete() {
 }
 
 /**
- * Pre-emptive tag-scan cleanup across all 4 HK tabs. Removes any shape
- * whose label starts with [asia-pm  or [ORB  regardless of state-file
- * tracking. Mirrors the US `cleanupPane` approach in premarket_setup.mjs.
+ * Pre-emptive stale-shape cleanup across EVERY tab and pane showing an HK
+ * symbol (dedicated ticker tabs, overview tabs, the swap tab). Removes:
+ *   - legacy tagged shapes:  [asia-pm *], [ORB *]
+ *   - clean-label ORB lines: "ORB H · …", "ORB L · …", "T1 ▲/▼", "T2 ▲/▼"
  *
- * Returns total shapes removed across all tabs (for the run summary).
+ * The clean ORB labels matter most: post_open_orb only redraws them at/after
+ * 10:00 SGT, so a pre-10:00 premarket must WIPE the prior session's set
+ * rather than let it masquerade as today's (2026-06-12: Wednesday's stale
+ * T1▲ 24,626 sat one point from Friday's real opening high all morning).
+ * PMH/PML/PDH/PDL and SZone/RZone are deliberately NOT wiped here — their
+ * owning scripts clean-and-redraw them in later steps.
+ *
+ * Returns total shapes removed across all tabs/panes (for the run summary).
  */
 async function cleanupAllHKTabs() {
   let totalRemoved = 0;
   for (const sym of HK_SYMBOLS) {
-    const found = await findTabBySymbol(sym);
-    if (!found) {
+    const targets = await findChartsAcrossTabs(sym);
+    if (!targets.length) {
       console.log(`  [${sym}] no tab open — skipped`);
       continue;
     }
-    const removed = await withTabSession(found.tab.id, async (run) => {
-      return run(`(() => {
-        try {
-          // Activate first chart in this tab so _activeChartWidgetWV resolves.
-          const w = window.TradingViewApi._chartWidgetCollection.getAll()[0];
-          if (w && w._mainDiv) w._mainDiv.click();
-          const api = window.TradingViewApi._activeChartWidgetWV.value();
-          if (!api || !api.getAllShapes) return 0;
-          const shapes = api.getAllShapes();
-          let n = 0;
-          for (const sh of shapes) {
-            try {
-              const s = api.getShapeById ? api.getShapeById(sh.id) : null;
-              const props = s && s.getProperties ? s.getProperties() : null;
-              const text = props && props.text ? String(props.text) : '';
-              if (/^\\[(ORB |asia-pm )/.test(text)) { api.removeEntity(sh.id); n++; }
-            } catch (e) {}
-          }
-          return n;
-        } catch (e) { return 0; }
-      })()`);
-    });
-    const n = Number(removed) || 0;
-    console.log(`  [${found.actualSymbol}] removed ${n} stale tagged shapes`);
-    totalRemoved += n;
+    let removed = 0;
+    let panes = 0;
+    for (const target of targets) {
+      for (const ci of target.chartIndices) {
+        panes++;
+        await withDrawSession(target.tab.id, async (draw) => {
+          removed += await draw.removeByLabelMatch('^\\[(ORB |asia-pm )');
+          removed += await draw.removeByLabelMatch('^(ORB [HL]|T1 [▲▼]|T2 [▲▼])');
+        }, { chartIndex: ci });
+      }
+    }
+    console.log(`  [${targets[0].actualSymbol}] removed ${removed} stale shape(s) across ${panes} pane(s) on ${targets.length} tab(s)`);
+    totalRemoved += removed;
   }
   return totalRemoved;
 }
@@ -193,7 +192,7 @@ async function main() {
   console.log(`  Started: ${startedAt.toISOString()}`);
 
   const orbReady = isAfterORBComplete();
-  console.log(`  ORB ready (≥09:45 SGT): ${orbReady ? 'YES' : 'NO — ORB + A50 will be skipped'}`);
+  console.log(`  ORB ready (≥10:00 SGT): ${orbReady ? 'YES' : 'NO — ORB + A50 will be skipped (stale ORB lines still wiped in STEP 1)'}`);
 
   // STEP 0 — tab swap (US → HK). Flips reusable AAPL/AMZN/NVDA tabs to their
   // HK counterparts per asia/config/tab_swap.json. Plus-plan tab-limit workaround.
@@ -234,8 +233,8 @@ async function main() {
     await runStep('post_open_orb.mjs', 'STEP 6 — ORB compute + draw');
   } else {
     console.log('\n──────────────────────────────────────');
-    console.log('  STEP 5/6 — SKIPPED (pre-09:45 SGT)');
-    console.log('  Re-run this routine after 09:45 SGT to populate A50 + ORB.');
+    console.log('  STEP 5/6 — SKIPPED (pre-10:00 SGT — 30-min opening range not complete)');
+    console.log('  Re-run this routine (or click "ORB triggers") after 10:00 SGT to populate A50 + ORB.');
     console.log('──────────────────────────────────────');
   }
 
