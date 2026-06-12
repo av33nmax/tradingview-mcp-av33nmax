@@ -26,7 +26,9 @@ export const SR_TF_CONFIG = [
 
 export const SR_DEFAULTS = {
   mergePct: Number(process.env.SR_MERGE_PCT ?? 0.0015), // merge within 0.15% of price
-  maxPerSide: Number(process.env.SR_MAX_PER_SIDE ?? 6), // cap lines per side
+  // 3/side (was 6) since 2026-06-13 declutter: only multi-TF-confirmed levels
+  // survive the cap anyway, and 12 lines per chart drowned the signal.
+  maxPerSide: Number(process.env.SR_MAX_PER_SIDE ?? 3), // cap lines per side
   resColor: "#EF5350", // red   — resistance
   supColor: "#26A69A", // green — support
   labelRe: "^(SZone|RZone)", // cleanup pattern — only touches our own lines
